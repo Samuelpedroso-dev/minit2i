@@ -1,0 +1,153 @@
+"""Treina o MiniT2I geral numa GPU. Carrega os latentes prontos inteiros na GPU, retoma do
+checkpoint, salva a cada 15 minutos e gera uma grade de exemplos a cada 30. Shards novos que
+o preparar.py terminar durante o treino entram automaticamente.
+    python treinar.py --dados /content/drive/MyDrive/minit2i/dados --ckpt /content/drive/MyDrive/minit2i/geral.pt
+"""
+import argparse, copy, os, pathlib, time
+import numpy as np
+import torch
+from modelo import DiTGeral, perda_rf, amostrar
+from congelados import Texto, VAE
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--dados", required=True)
+ap.add_argument("--ckpt", required=True)
+ap.add_argument("--amostras", default=None)
+ap.add_argument("--minutos", type=float, default=170)
+ap.add_argument("--lote", type=int, default=256)
+ap.add_argument("--lr", type=float, default=1e-4)
+ap.add_argument("--dim", type=int, default=768)
+ap.add_argument("--prof", type=int, default=12)
+ap.add_argument("--cabecas", type=int, default=12)
+ap.add_argument("--min_shards", type=int, default=10)
+ap.add_argument("--falso", action="store_true")
+a = ap.parse_args()
+
+dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+cuda = dev.type == "cuda"
+if cuda:
+    torch.backends.cuda.matmul.allow_tf32 = True; torch.backends.cudnn.allow_tf32 = True
+dados_dir = pathlib.Path(a.dados)
+amostras_dir = pathlib.Path(a.amostras or pathlib.Path(a.ckpt).parent / "amostras"); amostras_dir.mkdir(parents=True, exist_ok=True)
+
+PROMPTS = ["um cachorro na grama", "a red car on a city street", "uma praia com coqueiros ao pôr do sol",
+           "a plate of pasta", "um gato dormindo no sofá", "mountains covered in snow",
+           "uma casa de madeira na floresta", "a portrait of a smiling woman"]
+
+
+class Dados:
+    """Latentes e tokens na GPU. Recarrega quando aparecem shards novos."""
+    def __init__(self):
+        self.vistos, self.lat, self.ids = set(), None, None
+
+    def atualizar(self):
+        novos = sorted(p for p in dados_dir.glob("*.pt") if p.name not in self.vistos)
+        if not novos:
+            return 0
+        L, I = [], []
+        for p in novos:
+            try:
+                d = torch.load(p, map_location="cpu")
+            except Exception:
+                continue
+            L.append(d["lat"]); I.append(d["ids"]); self.vistos.add(p.name)
+        if not L:
+            return 0
+        L, I = torch.cat(L).to(dev), torch.cat(I).to(dev)
+        self.lat = L if self.lat is None else torch.cat([self.lat, L])
+        self.ids = I if self.ids is None else torch.cat([self.ids, I])
+        return len(L)
+
+    def __len__(self):
+        return 0 if self.lat is None else len(self.lat)
+
+
+dados = Dados()
+while True:
+    dados.atualizar()
+    if len(dados.vistos) >= a.min_shards or a.falso:
+        break
+    print(f"esperando shards, {len(dados.vistos)} de {a.min_shards} prontos", flush=True); time.sleep(60)
+print(f"{len(dados)} imagens em {len(dados.vistos)} shards", flush=True)
+
+texto, vae = Texto(dev, a.falso), VAE(dev, a.falso)
+vazio = texto.tokenizar([""]).to(dev)
+res_lat = dados.lat.shape[-1]
+
+model = DiTGeral(lat_res=res_lat, dim=a.dim, depth=a.prof, heads=a.cabecas).to(dev)
+ema = copy.deepcopy(model).requires_grad_(False)
+opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.0, betas=(0.9, 0.99))
+scaler = torch.amp.GradScaler(enabled=cuda)
+passo, vistas = 0, 0
+if os.path.exists(a.ckpt):
+    ck = torch.load(a.ckpt, map_location=dev)
+    model.load_state_dict(ck["model"]); ema.load_state_dict(ck["ema"]); opt.load_state_dict(ck["opt"])
+    if "scaler" in ck: scaler.load_state_dict(ck["scaler"])
+    passo, vistas = ck["passo"], ck.get("vistas", 0)
+    print(f"retomando do passo {passo}, {vistas/1e6:.2f} M imagens vistas", flush=True)
+print(f"{sum(p.numel() for p in model.parameters())/1e6:.1f} M parametros treináveis", flush=True)
+
+
+def salvar():
+    tmp = a.ckpt + ".tmp"
+    torch.save({"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
+                "scaler": scaler.state_dict(), "passo": passo, "vistas": vistas, "cfg": model.cfg}, tmp)
+    os.replace(tmp, a.ckpt)
+
+
+def grade():
+    ema.eval()
+    cond = texto(texto.tokenizar(PROMPTS).to(dev))
+    inc = texto(vazio.expand(len(PROMPTS), -1))
+    z = amostrar(ema, cond, inc, passos=25, cfg=4.5, semente=0)
+    img = ((vae.decodificar(z) + 1) * 127.5).round().clamp(0, 255).byte().permute(0, 2, 3, 1).cpu().numpy()
+    from PIL import Image, ImageDraw
+    n, S = len(PROMPTS), img.shape[1]
+    tela = Image.new("RGB", (4 * S, 2 * (S + 18)), (0, 0, 0)); d = ImageDraw.Draw(tela)
+    for i in range(n):
+        x, y = (i % 4) * S, (i // 4) * (S + 18)
+        tela.paste(Image.fromarray(img[i]), (x, y)); d.text((x + 3, y + S + 3), PROMPTS[i][:22], fill=(220, 220, 220))
+    caminho = amostras_dir / f"passo_{passo:07d}.png"
+    tela.save(caminho); tela.save(amostras_dir / "ultima.png")
+    return caminho
+
+
+t0 = ult_salvo = ult_grade = ult_dados = time.time()
+perdas, t_log, v_log = [], time.time(), vistas
+while time.time() - t0 < a.minutos * 60:
+    idx = torch.randint(0, len(dados), (a.lote,), device=dev)
+    x0 = dados.lat[idx].float()
+    x0 = torch.where(torch.rand(a.lote, 1, 1, 1, device=dev) < 0.5, x0.flip(3), x0)
+    ids = dados.ids[idx]
+    drop = torch.rand(a.lote, device=dev) < 0.1
+    ids = torch.where(drop[:, None], vazio.expand(a.lote, -1), ids)
+    txt, tmask, pooled = texto(ids)
+    for g in opt.param_groups:
+        g["lr"] = a.lr * min(1.0, (passo + 1) / 2000)
+    with torch.autocast(dev.type, dtype=torch.float16, enabled=cuda):
+        loss = perda_rf(model, x0, txt, tmask, pooled)
+    opt.zero_grad(set_to_none=True)
+    scaler.scale(loss).backward()
+    scaler.unscale_(opt); torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    scaler.step(opt); scaler.update()
+    with torch.no_grad():
+        dec = min(0.9999, (1 + passo) / (10 + passo))
+        for pe, pm in zip(ema.parameters(), model.parameters()):
+            pe.lerp_(pm, 1 - dec)
+    passo += 1; vistas += a.lote; perdas.append(loss.item())
+    if passo % 100 == 0:
+        dt = time.time() - t_log
+        print(f"passo {passo} perda {np.mean(perdas[-100:]):.4f} {(vistas - v_log)/dt:.0f} img/s "
+              f"{vistas/1e6:.2f} M vistas {len(dados)/1e3:.0f} mil imagens", flush=True)
+        t_log, v_log = time.time(), vistas
+    agora = time.time()
+    if agora - ult_salvo > 900:
+        salvar(); ult_salvo = agora
+    if agora - ult_grade > 1800:
+        print("grade salva em", grade(), flush=True); ult_grade = agora
+    if agora - ult_dados > 1200:
+        n = dados.atualizar(); ult_dados = agora
+        if n: print(f"+{n} imagens novas, total {len(dados)}", flush=True)
+salvar()
+print("grade salva em", grade(), flush=True)
+print(f"salvo no passo {passo}", flush=True)
