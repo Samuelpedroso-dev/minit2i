@@ -4,6 +4,7 @@ o preparar.py terminar durante o treino entram automaticamente.
     python treinar.py --dados /content/drive/MyDrive/minit2i/dados --ckpt /content/drive/MyDrive/minit2i/geral.pt
 """
 import argparse, copy, os, pathlib, time
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
 from modelo import DiTGeral, perda_rf, amostrar
@@ -15,6 +16,7 @@ ap.add_argument("--ckpt", required=True)
 ap.add_argument("--amostras", default=None)
 ap.add_argument("--minutos", type=float, default=170)
 ap.add_argument("--lote", type=int, default=256)
+ap.add_argument("--acum", type=int, default=2, help="divide cada lote em pedaços para caber na memória")
 ap.add_argument("--lr", type=float, default=1e-4)
 ap.add_argument("--dim", type=int, default=768)
 ap.add_argument("--prof", type=int, default=12)
@@ -115,26 +117,30 @@ def grade():
 t0 = ult_salvo = ult_grade = ult_dados = time.time()
 perdas, t_log, v_log = [], time.time(), vistas
 while time.time() - t0 < a.minutos * 60:
-    idx = torch.randint(0, len(dados), (a.lote,), device=dev)
-    x0 = dados.lat[idx].float()
-    x0 = torch.where(torch.rand(a.lote, 1, 1, 1, device=dev) < 0.5, x0.flip(3), x0)
-    ids = dados.ids[idx]
-    drop = torch.rand(a.lote, device=dev) < 0.1
-    ids = torch.where(drop[:, None], vazio.expand(a.lote, -1), ids)
-    txt, tmask, pooled = texto(ids)
     for g in opt.param_groups:
         g["lr"] = a.lr * min(1.0, (passo + 1) / 2000)
-    with torch.autocast(dev.type, dtype=torch.float16, enabled=cuda):
-        loss = perda_rf(model, x0, txt, tmask, pooled)
     opt.zero_grad(set_to_none=True)
-    scaler.scale(loss).backward()
+    mb = a.lote // a.acum
+    soma = 0.0
+    for _ in range(a.acum):
+        idx = torch.randint(0, len(dados), (mb,), device=dev)
+        x0 = dados.lat[idx].float()
+        x0 = torch.where(torch.rand(mb, 1, 1, 1, device=dev) < 0.5, x0.flip(3), x0)
+        ids = dados.ids[idx]
+        drop = torch.rand(mb, device=dev) < 0.1
+        ids = torch.where(drop[:, None], vazio.expand(mb, -1), ids)
+        txt, tmask, pooled = texto(ids)
+        with torch.autocast(dev.type, dtype=torch.float16, enabled=cuda):
+            loss = perda_rf(model, x0, txt, tmask, pooled) / a.acum
+        scaler.scale(loss).backward()
+        soma += loss.item()
     scaler.unscale_(opt); torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     scaler.step(opt); scaler.update()
     with torch.no_grad():
         dec = min(0.9999, (1 + passo) / (10 + passo))
         for pe, pm in zip(ema.parameters(), model.parameters()):
             pe.lerp_(pm, 1 - dec)
-    passo += 1; vistas += a.lote; perdas.append(loss.item())
+    passo += 1; vistas += a.lote; perdas.append(soma)
     if passo % 100 == 0:
         dt = time.time() - t_log
         print(f"passo {passo} perda {np.mean(perdas[-100:]):.4f} {(vistas - v_log)/dt:.0f} img/s "

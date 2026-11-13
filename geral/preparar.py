@@ -16,7 +16,7 @@ ap.add_argument("--inicio", type=int, default=0)
 ap.add_argument("--fim", type=int, default=576)
 ap.add_argument("--res", type=int, default=128)
 ap.add_argument("--minutos", type=float, default=1e9)
-ap.add_argument("--lote", type=int, default=128)
+ap.add_argument("--lote", type=int, default=32)
 ap.add_argument("--tmp", default="/tmp/cc3m")
 ap.add_argument("--tar_local", default=None, help="usa um tar local em vez de baixar, para teste")
 ap.add_argument("--falso", action="store_true")
@@ -65,6 +65,8 @@ def processar(caminho, destino):
     for i in range(0, len(itens), a.lote):
         x = torch.from_numpy(np.stack([im for im, _ in itens[i:i + a.lote]])).permute(0, 3, 1, 2).float() / 127.5 - 1
         lats.append(vae.codificar(x).cpu().half())
+    if dev.type == "cuda":
+        torch.cuda.empty_cache()
     caps = [c for _, c in itens]
     dados = {"lat": torch.cat(lats), "ids": texto.tokenizar(caps), "cap": caps, "res": a.res}
     tmp = destino.with_suffix(".tmp")
