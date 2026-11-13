@@ -42,6 +42,30 @@
     }
   }
 
+  function montarSugestoes() {
+    const exemplos = [["um triângulo azul grande no centro", "Nunca visto"], ["um losango roxo pequeno no topo", "Novo"],
+                      ["um círculo laranja grande à direita", "Popular"]];
+    const box = $("sugestoes"); box.innerHTML = "";
+    for (const [p, selo] of exemplos) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "sug";
+      b.innerHTML = `<span class="t">/ ${esc(p)}</span><span class="selo${selo === "Popular" ? " quente" : ""}">${selo}</span>`;
+      b.onclick = () => { $("prompt").value = p; $("prompt").focus(); };
+      box.appendChild(b);
+    }
+    const mais = document.createElement("button"); mais.type = "button"; mais.className = "sug";
+    mais.innerHTML = `<span class="t">Mais palavras</span><span aria-hidden="true">›</span>`;
+    mais.onclick = () => { $("vocab").hidden = !$("vocab").hidden; };
+    box.appendChild(mais);
+  }
+
+  function lembrarSessao(prompt) {
+    const box = $("sessoes"); box.querySelector(".vazio-s")?.remove();
+    const b = document.createElement("button"); b.type = "button"; b.textContent = prompt; b.title = prompt;
+    b.onclick = () => { $("prompt").value = prompt; $("prompt").focus(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    box.prepend(b);
+    while (box.children.length > 14) box.lastChild.remove();
+  }
+
   function surpresa() {
     const g = cfg.grupos, r = (a) => a[Math.floor(Math.random() * a.length)];
     return `um ${r(g.formas)} ${r(g.cores)} ${r(g.tamanhos)} ${r(g.posicoes)}`;
@@ -77,6 +101,9 @@
     t.tempo.textContent = `pronto em ${s} s`;
     t.barra.parentElement.hidden = true;
     t.botoes.forEach((b) => (b.disabled = false));
+    const m = $("miniatura"); m.textContent = "";
+    const c = document.createElement("canvas"); c.width = c.height = cfg.img;
+    c.getContext("2d").drawImage(t.cels[0].canvas, 0, 0); m.appendChild(c);
     salvarHistorico();
   }
 
@@ -113,6 +140,7 @@
     el.querySelector('[data-a="editar"]').onclick = () => { $("prompt").value = dados.prompt; $("prompt").focus(); };
     $("feed").prepend(el);
     trabalhos.set(t.id, t);
+    lembrarSessao(dados.prompt);
     return t;
   }
 
@@ -158,7 +186,7 @@
   $("variar").onclick = () => {
     const { t, i } = aberto; $("caixa").hidden = true;
     novoTrabalho(t.dados.prompt, t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img).data);
-    window.scrollTo({ top: $("feed").offsetTop - 80, behavior: "smooth" });
+    $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   // historico local, so as imagens prontas, como PNG pequeno
@@ -189,12 +217,24 @@
 
   $("passos").oninput = () => ($("passos-v").textContent = $("passos").value);
   $("guidance").oninput = () => ($("guidance-v").textContent = $("guidance").value.replace(".", ","));
+  $("prompt").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!$("gerar").disabled) $("form").requestSubmit(); }
+  });
+  $("bt-ajustes").onclick = (e) => {
+    e.stopPropagation();
+    const ab = $("painel").hidden; $("painel").hidden = !ab; $("bt-ajustes").setAttribute("aria-expanded", String(ab));
+  };
+  $("painel").onclick = (e) => e.stopPropagation();
+  document.addEventListener("click", () => { $("painel").hidden = true; $("bt-ajustes").setAttribute("aria-expanded", "false"); });
+  $("aba-galeria").onclick = () => $("galeria").scrollIntoView({ behavior: "smooth" });
+  $("aba-gerar").onclick = () => { window.scrollTo({ top: 0, behavior: "smooth" }); $("prompt").focus(); };
+  document.querySelector("[data-foco]").onclick = (e) => { e.preventDefault(); $("prompt").focus(); };
   $("surpresa").onclick = () => { $("prompt").value = surpresa(); $("prompt").focus(); };
   $("form").onsubmit = (e) => {
     e.preventDefault();
     const p = $("prompt").value.trim() || surpresa();
     $("prompt").value = p; novoTrabalho(p);
-    window.scrollTo({ top: $("feed").offsetTop - 80, behavior: "smooth" });
+    $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   async function iniciar() {
@@ -206,7 +246,7 @@
       const fonte = document.getElementById("fonte-trabalhador").textContent;
       const url = URL.createObjectURL(new Blob([fonte], { type: "text/javascript" }));
       tokenizador = { stoi: Object.fromEntries(cfg.vocab.map((p, i) => [p, i])), sem: Object.fromEntries(cfg.vocab.map((p, i) => [tira(p), i])) };
-      montarVocab();
+      montarVocab(); montarSugestoes();
       // decodifica uma vez aqui e manda uma copia para cada nucleo
       const bin = atob(b64.trim()), u16 = new Uint16Array(bin.length >> 1);
       for (let i = 0; i < u16.length; i++) u16[i] = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);

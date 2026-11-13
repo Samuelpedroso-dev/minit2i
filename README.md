@@ -119,9 +119,8 @@ usada pelos geradores grandes, numa escala que cabe numa CPU.
 | versão | o que entra |
 |---|---|
 | **0.1** | formas geométricas em 32 por 32, tudo treinado do zero em CPU. Publicada |
-| 0.2 | primeiras fotos reais, treino em GPU no Google Colab com as 60 mil imagens do CIFAR 10 e prompts em português. O notebook já está em `colab/treino.ipynb` |
-| 0.3 | difusão no espaço latente com VAE e encoder de texto CLIP, para prompts em linguagem livre |
-| 0.4 | milhões de imagens em domínio público com legendas reais, a 256 por 256, treinadas em várias GPUs gratuitas ao mesmo tempo com DiLoCo |
+| 0.2 | gerador geral, qualquer prompt em português ou inglês. Um transformer de 120 milhões de parâmetros treinado do zero no espaço latente do VAE do Stable Diffusion, com um encoder de texto CLIP multilíngue congelado, em 2,9 milhões de fotos do CC3M a 128 por 128, no Colab gratuito. Em treino, código em `geral/` e `colab/geral.ipynb` |
+| 0.3 | 256 por 256, legendas melhores e mais dados, treino em várias GPUs gratuitas ao mesmo tempo com DiLoCo |
 | 1.0 | um gerador geral, no nível dos primeiros geradores públicos, rodando no seu computador |
 
 Cada versão segue a mesma regra desta. O modelo roda inteiro no navegador, o
@@ -156,5 +155,7 @@ python3 -m http.server              # e abra localhost:8000
 | `modelo/minit2i.pt` | checkpoint do PyTorch, pesos da média móvel |
 | `web/` | motor de inferência, worker, interface e scripts de exportação e montagem |
 | `treino/` | modelo, dataset, treino, geração e medição em PyTorch |
-| `colab/treino.ipynb` | treino em GPU com fotos reais, base da versão 0.2 |
+| `geral/` | o gerador geral da versão 0.2, modelo, preparo do dataset e treino |
+| `colab/geral.ipynb` | notebook que prepara os dados e treina o gerador geral no Colab |
+| `colab/treino.ipynb` | treino das formas em GPU |
 | `resultados/` | medição, conferência do motor e grade de exemplos |
