@@ -1,0 +1,4 @@
+treino/ckpt.pt
+treino/dados.npz
+__pycache__/
+*.bak

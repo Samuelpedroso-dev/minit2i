@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="MiniT2I, um gerador de imagens por texto de {{PARAMETROS}} parametros, treinado do zero e rodando inteiro no navegador.">
+<title>MiniT2I</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --preto:#000;--fundo:#050506;--painel:#0b0c0d;--painel2:#111314;
+  --linha:rgba(255,255,255,.13);--linha2:rgba(255,255,255,.26);
+  --branco:#fff;--cinza:#9aa0a4;--fraco:#5b6165;
+  --disp:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--fundo)}
+body{margin:0;color:var(--cinza);font-family:var(--disp);font-size:14px;line-height:1.55;
+  padding-bottom:calc(150px + env(safe-area-inset-bottom,0px));-webkit-font-smoothing:antialiased}
+.env{max-width:1180px;margin:0 auto;padding-inline:24px}
+h1,h2,h3{font-weight:500;color:var(--branco);margin:0;text-wrap:balance}
+.olho{font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--fraco)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+a{color:var(--branco)}
+button{font:inherit;color:inherit;cursor:pointer}
+[hidden]{display:none!important}
+
+header{border-bottom:1px solid var(--linha);background:var(--preto)}
+.cab{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px}
+.marca{font-weight:600;color:var(--branco);letter-spacing:.02em;font-size:16px;display:flex;gap:10px;align-items:baseline}
+.marca small{font-family:var(--mono);font-size:10px;font-weight:400;color:var(--fraco);letter-spacing:.06em}
+.ficha{display:flex;gap:22px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--fraco)}
+.ficha b{color:var(--branco);font-weight:500;font-family:var(--mono);letter-spacing:.04em}
+
+.hero{padding-block:40px 30px;border-bottom:1px solid var(--linha)}
+.hero h1{font-size:clamp(30px,5vw,52px);line-height:1.04;letter-spacing:-.025em;max-width:16ch}
+.hero p{max-width:60ch;margin:18px 0 0;font-size:15px}
+.aviso{margin-top:22px;display:inline-flex;gap:10px;align-items:center;border:1px solid var(--linha2);
+  padding:8px 12px;font-size:12px;color:var(--branco)}
+.ponto{width:6px;height:6px;background:var(--branco);border-radius:50%;animation:pulso 1.6s ease-in-out infinite}
+@keyframes pulso{50%{opacity:.25}}
+
+.estado{padding:14px 0;font-family:var(--mono);font-size:12px;color:var(--fraco);display:flex;gap:10px;align-items:center}
+
+/* feed de trabalhos */
+.feed{display:flex;flex-direction:column;gap:1px;background:var(--linha);border:1px solid var(--linha);margin-top:6px}
+.vazio-feed{background:var(--painel);padding:40px 24px;text-align:center}
+.trab{background:var(--painel);display:grid;grid-template-columns:minmax(0,420px) 1fr;gap:24px;padding:20px;animation:sobe .7s cubic-bezier(.16,1,.3,1) both}
+@keyframes sobe{from{opacity:0;transform:translateY(10px)}}
+.grade{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--preto);padding:4px}
+.cel{position:relative;aspect-ratio:1;background:#0e0f10;overflow:hidden;cursor:zoom-in}
+.cel canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+.cel .pct{position:absolute;inset:auto 8px 8px auto;font-family:var(--mono);font-size:11px;color:var(--branco);
+  background:rgba(0,0,0,.65);padding:2px 6px}
+.cel.gerando canvas{filter:saturate(.75)}
+.cel .pct:empty{display:none}
+.cel:not(.gerando):hover{outline:1px solid var(--branco);outline-offset:-1px}
+.info{display:flex;flex-direction:column;gap:12px;min-width:0}
+.info .prompt{color:var(--branco);font-size:18px;line-height:1.35;word-break:break-word}
+.info .prompt .ign{color:var(--fraco);text-decoration:line-through}
+.meta{font-family:var(--mono);font-size:11px;color:var(--fraco);display:flex;flex-wrap:wrap;gap:6px 16px}
+.barra{height:2px;background:var(--linha);position:relative}
+.barra i{position:absolute;inset:0 auto 0 0;background:var(--branco);transition:width .2s}
+.botoes{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.bt{border:1px solid var(--linha2);background:transparent;color:var(--branco);padding:8px 12px;font-size:11px;
+  letter-spacing:.14em;text-transform:uppercase}
+.bt:hover{background:var(--branco);color:#000}
+.bt.cheio{background:var(--branco);color:#000;border-color:var(--branco)}
+.bt.cheio:hover{opacity:.82}
+.bt:disabled{opacity:.35;pointer-events:none}
+.nota{font-size:12px;color:var(--fraco)}
+
+/* barra de prompt fixa */
+.comando{position:fixed;left:0;right:0;bottom:0;z-index:5;background:rgba(5,5,6,.92);backdrop-filter:blur(10px);
+  border-top:1px solid var(--linha);padding:14px 0 calc(14px + env(safe-area-inset-bottom,0px))}
+.linha-cmd{display:grid;grid-template-columns:auto 1fr auto auto;gap:0;border:1px solid var(--linha2);background:var(--preto)}
+.linha-cmd label{padding:0 14px;display:flex;align-items:center;font-family:var(--mono);font-size:13px;color:var(--fraco);border-right:1px solid var(--linha)}
+.linha-cmd input{background:transparent;border:0;outline:0;color:var(--branco);font:15px var(--disp);padding:15px 14px;min-width:0}
+.linha-cmd .bt{border:0;border-left:1px solid var(--linha);padding:0 18px}
+.ajustes{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;margin-top:10px;font-size:11px}
+.ajustes label{display:flex;gap:8px;align-items:center;color:var(--fraco);letter-spacing:.14em;text-transform:uppercase;font-size:10px}
+.ajustes input[type=range]{width:110px;accent-color:#fff}
+.ajustes input[type=text]{width:90px;background:transparent;border:1px solid var(--linha);color:var(--branco);font:12px var(--mono);padding:4px 6px}
+.ajustes b{font-family:var(--mono);color:var(--branco);font-weight:500;letter-spacing:0;min-width:2ch}
+
+/* vocabulario */
+.vocab{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--linha);border:1px solid var(--linha);margin-top:28px}
+.vocab > div{background:var(--painel);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--linha);background:transparent;color:var(--cinza);padding:4px 9px;font-size:12px}
+.chip:hover{border-color:var(--branco);color:var(--branco)}
+
+/* secoes de leitura */
+section.ler{border-top:1px solid var(--linha);margin-top:56px;padding-top:36px;display:grid;grid-template-columns:260px 1fr;gap:40px}
+section.ler h2{font-size:22px;letter-spacing:-.01em}
+section.ler p{margin:0 0 14px;max-width:68ch}
+.rolagem{overflow-x:auto}
+table.dados{border-collapse:collapse;width:100%;font-size:13px;margin:6px 0 18px}
+table.dados th{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--fraco);font-weight:500;text-align:left;padding:8px 10px;border-bottom:1px solid var(--linha2)}
+table.dados td{padding:9px 10px;border-bottom:1px solid var(--linha);font-family:var(--mono);color:var(--branco)}
+table.dados td:first-child{font-family:var(--disp);color:var(--cinza)}
+ol.versoes{list-style:none;padding:0;margin:0;border:1px solid var(--linha)}
+ol.versoes li{display:grid;grid-template-columns:90px 1fr;gap:16px;padding:14px 16px;border-bottom:1px solid var(--linha)}
+ol.versoes li:last-child{border-bottom:0}
+ol.versoes li b{font-family:var(--mono);color:var(--branco);font-weight:500}
+ol.versoes li.agora{background:var(--painel2)}
+ol.versoes li.agora span::after{content:"  publicada";font-family:var(--mono);font-size:10px;color:var(--branco);letter-spacing:.1em}
+footer{border-top:1px solid var(--linha);margin-top:60px;padding:24px 0;font-size:12px;color:var(--fraco)}
+
+/* ampliacao */
+.caixa{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.9);display:grid;place-items:center;padding:24px}
+.caixa .dentro{display:flex;flex-direction:column;gap:14px;align-items:center;max-width:min(92vw,560px);width:100%}
+.caixa canvas{width:100%;aspect-ratio:1;image-rendering:pixelated;border:1px solid var(--linha2);background:#000}
+.caixa p{margin:0;color:var(--branco);text-align:center}
+
+@media (max-width:820px){
+  .trab{grid-template-columns:1fr}
+  .vocab{grid-template-columns:1fr 1fr}
+  section.ler{grid-template-columns:1fr;gap:16px}
+  .ficha{display:none}
+  .linha-cmd label{display:none}
+  .linha-cmd{grid-template-columns:1fr auto auto}
+}
+@media (prefers-reduced-motion:reduce){.trab{animation:none}.ponto{animation:none}}
+</style>
+</head>
+<body>
+<header><div class="env cab">
+  <div class="marca">MiniT2I <small>v{{VERSAO}}</small></div>
+  <div class="ficha"><span>parâmetros <b>{{PARAMETROS_PT}}</b></span><span>passo de treino <b>{{PASSO_PT}}</b></span><span>servidor <b>nenhum</b></span></div>
+</div></header>
+
+<main class="env">
+  <div class="hero">
+    <span class="olho">gerador de imagens por texto, treinado do zero</span>
+    <h1>Você escreve, a rede desenha. No seu navegador.</h1>
+    <p>Um Diffusion Transformer de {{PARAMETROS_PT}} parâmetros com encoder de texto próprio, treinado do zero sem nenhum peso pré treinado. Cada imagem nasce do ruído puro e é limpa passo a passo aqui mesmo, no seu processador. Não existe servidor de inferência.</p>
+    <div class="aviso"><span class="ponto"></span>Versão inicial. O modelo ainda só conhece formas geométricas, e novas versões com fotos reais estão a caminho.</div>
+  </div>
+
+  <div class="vocab" id="vocab"></div>
+  <div class="estado" id="estado"><span class="ponto"></span><span id="estado-txt">carregando os pesos da rede</span></div>
+  <div class="feed" id="feed"><div class="vazio-feed" id="vazio-feed">Escreva um prompt na barra de baixo ou toque nas palavras acima para montar um.</div></div>
+
+  <section class="ler" id="sobre">
+    <div><span class="olho">como funciona</span><h2>O que roda aqui</h2></div>
+    <div>
+      <p>Os pesos chegam em float16 codificados em base64, {{TAMANHO}} no total. Um encoder de texto de duas camadas lê o prompt, e um Diffusion Transformer de seis blocos, com atenção cruzada ao texto, prevê a cada passo para onde a imagem deve andar. O treino usou rectified flow, e a geração usa classifier free guidance, que é o que faz a rede obedecer forte ao prompt.</p>
+      <p>A conta é a mesma do PyTorch, reescrita em JavaScript puro e conferida num caso de referência. O erro máximo entre as duas implementações é {{ERRO_REF}} para valores de até {{ESCALA_REF}}, que é o arredondamento do float16.</p>
+      <p>Cada uma das quatro imagens roda num núcleo do seu processador ao mesmo tempo. O que você vê durante a geração é a melhor estimativa da rede para a imagem final naquele passo.</p>
+    </div>
+  </section>
+
+  <section class="ler" id="medicao">
+    <div><span class="olho">medição</span><h2>O quanto ela obedece</h2></div>
+    <div>
+      <p>Todas as 280 combinações de forma, cor, tamanho e posição, duas sementes cada, {{PASSOS_MED}} passos e guidance {{GUIDANCE_MED}}. Um classificador geométrico lê cada imagem gerada. Antes, ele foi conferido em 2.000 imagens reais do treino, onde acertou {{CLASSIF_TUDO}} dos atributos completos.</p>
+      {{TABELA}}
+      <p>As combinações nunca vistas são triângulo azul e losango amarelo, que foram retiradas do treino de propósito. A rede viu triângulos, viu azul, mas nunca os dois juntos. Acertar essas mostra que ela combina conceitos em vez de decorar imagens.</p>
+    </div>
+  </section>
+
+  <section class="ler" id="versoes">
+    <div><span class="olho">atualizações</span><h2>O que vem por aí</h2></div>
+    <div>
+      <p>Este repositório vai ser atualizado em etapas, cada uma com a mesma regra, o modelo roda inteiro no navegador e cada número vem medido.</p>
+      <ol class="versoes">
+        <li class="agora"><b>v0.1</b><span>Formas geométricas em 32 por 32, encoder de texto e DiT treinados do zero em CPU.</span></li>
+        <li><b>v0.2</b><span>Primeiras fotos reais, treino em GPU no Google Colab com as 60 mil imagens do CIFAR 10 e prompts em português.</span></li>
+        <li><b>v0.3</b><span>Difusão no espaço latente com VAE e encoder de texto CLIP, para prompts em linguagem livre.</span></li>
+        <li><b>v0.4</b><span>Milhões de imagens em domínio público com legendas reais, a 256 por 256, treinadas em várias GPUs gratuitas ao mesmo tempo com DiLoCo.</span></li>
+        <li><b>v1.0</b><span>Um gerador geral, no nível dos primeiros geradores públicos, rodando no seu computador.</span></li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<footer><div class="env">MiniT2I, por Samuel Pedroso. Código e pesos em <a href="https://github.com/Samuelpedroso-dev/minit2i">github.com/Samuelpedroso-dev/minit2i</a>, licença MIT.</div></footer>
+
+<div class="comando"><div class="env">
+  <form class="linha-cmd" id="form">
+    <label for="prompt">/imagine</label>
+    <input id="prompt" autocomplete="off" placeholder="um triângulo azul grande no centro" disabled>
+    <button type="button" class="bt" id="surpresa" title="prompt aleatório">Surpresa</button>
+    <button type="submit" class="bt cheio" id="gerar" disabled>Gerar</button>
+  </form>
+  <div class="ajustes">
+    <label>passos <input type="range" id="passos" min="8" max="50" value="30"><b id="passos-v">30</b></label>
+    <label>guidance <input type="range" id="guidance" min="1" max="8" step="0.5" value="4"><b id="guidance-v">4</b></label>
+    <label>semente <input type="text" id="semente" placeholder="aleatória" inputmode="numeric"></label>
+    <span class="nota" id="nucleos"></span>
+  </div>
+</div></div>
+
+<div class="caixa" id="caixa" hidden><div class="dentro">
+  <canvas id="grande" width="32" height="32"></canvas>
+  <p id="caixa-txt"></p>
+  <div class="botoes">
+    <button class="bt cheio" id="baixar">Baixar ampliada</button>
+    <button class="bt" id="variar">Variações desta</button>
+    <button class="bt" id="fechar">Fechar</button>
+  </div>
+</div></div>
+
+<script type="text/plain" id="fonte-trabalhador">{{TRABALHADOR}}</script>
+<script>{{APP}}</script>
+</body>
+</html>
