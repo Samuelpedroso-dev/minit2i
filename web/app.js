@@ -43,7 +43,7 @@
   }
 
   function montarSugestoes() {
-    const exemplos = [["um triângulo azul grande no centro", "Nunca visto"], ["um losango roxo pequeno no topo", "Novo"],
+    const exemplos = modo === "geral" ? SUG_GERAL : [["um triângulo azul grande no centro", "Nunca visto"], ["um losango roxo pequeno no topo", "Novo"],
                       ["um círculo laranja grande à direita", "Popular"]];
     const box = $("sugestoes"); box.innerHTML = "";
     for (const [p, selo] of exemplos) {
@@ -55,7 +55,7 @@
     const mais = document.createElement("button"); mais.type = "button"; mais.className = "sug";
     mais.innerHTML = `<span class="t">Mais palavras</span><span aria-hidden="true">›</span>`;
     mais.onclick = () => { $("vocab").hidden = !$("vocab").hidden; };
-    box.appendChild(mais);
+    if (modo !== "geral") box.appendChild(mais);
   }
 
   function lembrarSessao(prompt) {
@@ -67,6 +67,7 @@
   }
 
   function surpresa() {
+    if (modo === "geral") return SURPRESA_GERAL[Math.floor(Math.random() * SURPRESA_GERAL.length)];
     const g = cfg.grupos, r = (a) => a[Math.floor(Math.random() * a.length)];
     return `um ${r(g.formas)} ${r(g.cores)} ${r(g.tamanhos)} ${r(g.posicoes)}`;
   }
@@ -102,7 +103,7 @@
     t.barra.parentElement.hidden = true;
     t.botoes.forEach((b) => (b.disabled = false));
     const m = $("miniatura"); m.textContent = "";
-    const c = document.createElement("canvas"); c.width = c.height = cfg.img;
+    const c = document.createElement("canvas"); c.width = c.height = t.S;
     c.getContext("2d").drawImage(t.cels[0].canvas, 0, 0); m.appendChild(c);
     salvarHistorico();
   }
@@ -126,17 +127,18 @@
         </div>
       </div>`;
     const grade = el.querySelector(".grade");
-    const t = { id: ++contador, el, dados, cels: [], prog: [0, 0, 0, 0], inicio: performance.now(),
+    const S = dados.tam || cfg.img;
+    const t = { id: ++contador, el, dados, S, cels: [], prog: [0, 0, 0, 0], inicio: performance.now(),
                 barra: el.querySelector(".barra i"), tempo: el.querySelector(".tempo"), botoes: [...el.querySelectorAll(".botoes .bt")] };
     for (let i = 0; i < 4; i++) {
       const c = document.createElement("div"); c.className = "cel gerando";
-      c.innerHTML = `<canvas width="${cfg.img}" height="${cfg.img}"></canvas><span class="pct"></span>`;
+      c.innerHTML = `<canvas width="${S}" height="${S}"${dados.modelo === "geral" ? ' style="image-rendering:auto"' : ""}></canvas><span class="pct"></span>`;
       const cv = c.querySelector("canvas");
       const cel = { el: c, ctx: cv.getContext("2d"), canvas: cv, pct: c.querySelector(".pct"), pronta: false };
       c.onclick = () => cel.pronta && abrir(t, i);
       t.cels.push(cel); grade.appendChild(c);
     }
-    el.querySelector('[data-a="refazer"]').onclick = () => novoTrabalho(dados.prompt);
+    el.querySelector('[data-a="refazer"]').onclick = () => dados.modelo === "geral" ? novoTrabalhoGeral(dados.prompt) : novoTrabalho(dados.prompt);
     el.querySelector('[data-a="editar"]').onclick = () => { $("prompt").value = dados.prompt; $("prompt").focus(); };
     $("feed").prepend(el);
     trabalhos.set(t.id, t);
@@ -163,12 +165,65 @@
     despachar();
   }
 
+  // modelo geral, roda na placa de video, um trabalho por vez
+  let filaGeral = Promise.resolve(), modo = "formas";
+  async function garantirGeral() {
+    if (MiniGeral.pronto) return;
+    const m = await MiniGeral.iniciar(GERAL_REPO, (txt) => estado(txt));
+    estado(`modelo geral pronto, prévia do passo ${m.passo.toLocaleString("pt-BR")} do treino`, false);
+  }
+  function novoTrabalhoGeral(prompt) {
+    const a = lerAjustes();
+    const palavras = prompt.split(/\s+/).filter(Boolean).map((p) => ({ p, ok: true }));
+    const t = criarCartao({ prompt, palavras, sementes: [a.semente], passos: a.passos, guidance: a.guidance, tipo: "geral, prévia", modelo: "geral", tam: 128 });
+    t.tempo.textContent = "na fila";
+    filaGeral = filaGeral.then(async () => {
+      try {
+        t.tempo.textContent = "carregando o modelo";
+        await garantirGeral();
+        t.inicio = performance.now(); t.tempo.textContent = "gerando";
+        await MiniGeral.gerar(prompt, { n: 4, passos: a.passos, cfg: a.guidance, semente: a.semente }, async (p, total, imgs, S, fim) => {
+          t.barra.style.width = (100 * p / total) + "%";
+          t.cels.forEach((c) => (c.pct.textContent = fim ? "" : Math.round(100 * p / total) + "%"));
+          if (imgs) imgs.forEach((rgba, i) => {
+            const c = t.cels[i];
+            if (c.canvas.width !== S) { c.canvas.width = c.canvas.height = S; t.S = S; }
+            c.ctx.putImageData(new ImageData(rgba, S, S), 0, 0);
+          });
+          if (fim) { t.cels.forEach((c) => { c.pronta = true; c.el.classList.remove("gerando"); }); concluir(t); }
+          await new Promise((r) => setTimeout(r, 0));
+        });
+      } catch (e) {
+        console.error(e);
+        t.tempo.textContent = "não foi possível gerar"; t.barra.parentElement.hidden = true;
+        t.botoes.forEach((b) => (b.disabled = false));
+        estado(e.message || String(e), false);
+      }
+    });
+  }
+
+  const SUG_GERAL = [["um cachorro correndo na grama", "Novo"], ["uma praia com coqueiros ao pôr do sol", "Popular"], ["a plate of pasta with tomato sauce", "Inglês"]];
+  const SURPRESA_GERAL = ["uma casa de madeira na floresta", "montanhas cobertas de neve", "um gato dormindo no sofá", "a red car on a city street",
+    "um prato de frutas tropicais", "a lighthouse at night", "um campo de flores amarelas", "a bowl of ramen", "uma cidade à noite com luzes", "um barco no lago"];
+  function mudarModo(novo) {
+    if (novo === "geral" && !GERAL_REPO) return;
+    modo = novo;
+    $("aba-formas").classList.toggle("on", modo === "formas"); $("aba-geral").classList.toggle("on", modo === "geral");
+    $("modelo").value = modo;
+    $("prompt").placeholder = modo === "geral"
+      ? "Descreva qualquer imagem, em português ou inglês. É uma prévia em treino, as imagens ainda saem borradas."
+      : "Descreva a imagem. Por enquanto o modelo conhece formas, cores, tamanhos e posições, como um triângulo azul grande no centro.";
+    montarSugestoes();
+    if (modo === "geral") $("vocab").hidden = true;
+  }
+
   // ampliacao, download e variacoes
   let aberto = null;
   function abrir(t, i) {
     aberto = { t, i };
-    const g = $("grande").getContext("2d");
-    g.putImageData(t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img), 0, 0);
+    const gc = $("grande"); gc.width = gc.height = t.S;
+    gc.style.imageRendering = t.dados.modelo === "geral" ? "auto" : "pixelated";
+    gc.getContext("2d").putImageData(t.cels[i].ctx.getImageData(0, 0, t.S, t.S), 0, 0);
     $("caixa-txt").textContent = t.dados.prompt;
     $("caixa").hidden = false;
   }
@@ -185,7 +240,8 @@
   };
   $("variar").onclick = () => {
     const { t, i } = aberto; $("caixa").hidden = true;
-    novoTrabalho(t.dados.prompt, t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img).data);
+    if (t.dados.modelo === "geral") novoTrabalhoGeral(t.dados.prompt);
+    else novoTrabalho(t.dados.prompt, t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img).data);
     $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -229,11 +285,15 @@
   $("aba-galeria").onclick = () => $("galeria").scrollIntoView({ behavior: "smooth" });
   $("aba-gerar").onclick = () => { window.scrollTo({ top: 0, behavior: "smooth" }); $("prompt").focus(); };
   document.querySelector("[data-foco]").onclick = (e) => { e.preventDefault(); $("prompt").focus(); };
+  $("aba-formas").onclick = () => mudarModo("formas");
+  $("aba-geral").onclick = () => mudarModo("geral");
+  $("modelo").onchange = () => mudarModo($("modelo").value);
+  if (GERAL_REPO) { $("aba-geral").disabled = false; $("modelo").querySelector('option[value="geral"]').disabled = false; }
   $("surpresa").onclick = () => { $("prompt").value = surpresa(); $("prompt").focus(); };
   $("form").onsubmit = (e) => {
     e.preventDefault();
     const p = $("prompt").value.trim() || surpresa();
-    $("prompt").value = p; novoTrabalho(p);
+    $("prompt").value = p; modo === "geral" ? novoTrabalhoGeral(p) : novoTrabalho(p);
     $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
   };
 

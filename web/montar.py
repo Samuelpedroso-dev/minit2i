@@ -42,6 +42,8 @@ html = (WEB / "corpo.html").read_text()
 subs = {
     "TRABALHADOR": limpa((WEB / "motor.js").read_text()) + "\n" + limpa((WEB / "trabalhador.js").read_text()),
     "APP": (WEB / "app.js").read_text(),
+    "GERAL": (WEB / "geral.js").read_text(),
+    "GERAL_REPO": json.dumps(json.load(open(WEB / "geral.json")).get("repo", "")) if (WEB / "geral.json").exists() else '""',
     "TABELA": "".join(tabela),
     "VERSAO": VERSAO,
     "PARAMETROS": str(cfg["parametros"]),

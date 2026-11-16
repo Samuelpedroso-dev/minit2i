@@ -210,8 +210,8 @@ footer a{color:var(--cinza);text-decoration:underline}
 
     <form class="cartao" id="form">
       <div class="abas">
-        <button type="button" class="on"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Imagem de IA</button>
-        <button type="button" disabled>Geral<span class="selo quente">Treinando</span></button>
+        <button type="button" class="on" id="aba-formas"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Formas</button>
+        <button type="button" id="aba-geral" disabled>Geral<span class="selo quente">Prévia</span></button>
         <button type="button" disabled>Variações por imagem</button>
       </div>
       <div class="corpo-cartao">
@@ -231,7 +231,7 @@ footer a{color:var(--cinza);text-decoration:underline}
           </span>
           <button type="button" class="pilula" id="surpresa"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>Surpresa</button>
           <div class="direita">
-            <select id="modelo" title="modelo"><option>MiniT2I 0.1 Formas</option><option disabled>MiniT2I 0.2 Geral, em treino</option></select>
+            <select id="modelo" title="modelo"><option value="formas">MiniT2I 0.1 Formas</option><option value="geral" disabled>MiniT2I 0.2 Geral, prévia</option></select>
             <button type="submit" id="gerar" disabled title="Gerar"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
           </div>
         </div>
@@ -545,6 +545,182 @@ self.onmessage = (e) => {
   }
 };
 </script>
+<script>const GERAL_REPO = "";</script>
+<script>// Motor do MiniT2I geral no navegador. Baixa os tres modelos ONNX do Hugging Face,
+// guarda no cache do navegador e gera com o ONNX Runtime Web, na placa de video por WebGPU.
+const MiniGeral = (() => {
+  const ORT = window.MINIT2I_ORT || "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/";
+  let ort = null, sess = {}, meta = null, vocab = null, pronto = false, base = "";
+
+  function carregarScript(src) {
+    return new Promise((ok, erro) => {
+      const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => erro(new Error("falha ao carregar " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function baixar(url, versao, aoProgresso) {
+    const chave = url + "?v=" + encodeURIComponent(versao);
+    let cache = null;
+    try { cache = await caches.open("minit2i-geral"); const hit = await cache.match(chave); if (hit) { const b = await hit.arrayBuffer(); aoProgresso(b.byteLength, b.byteLength); return b; } } catch (e) { cache = null; }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${r.status} ao baixar ${url.split("/").pop()}`);
+    const total = +r.headers.get("content-length") || 0;
+    const leitor = r.body.getReader(); const partes = []; let n = 0;
+    for (;;) { const { done, value } = await leitor.read(); if (done) break; partes.push(value); n += value.length; aoProgresso(n, total); }
+    const buf = new Uint8Array(n); let o = 0; for (const p of partes) { buf.set(p, o); o += p.length; }
+    try { if (cache) { await cache.put(chave, new Response(buf)); for (const k of await cache.keys()) if (k.url.startsWith(url) && k.url !== new Request(chave).url) await cache.delete(k); } } catch (e) { /* sem cache, segue */ }
+    return buf.buffer;
+  }
+
+  // tokenizador BERT multilingue, mesmo algoritmo do original: limpeza, separacao de CJK e pontuacao, WordPiece
+  function ehPont(cp) {
+    if ((cp >= 33 && cp <= 47) || (cp >= 58 && cp <= 64) || (cp >= 91 && cp <= 96) || (cp >= 123 && cp <= 126)) return true;
+    return /\p{P}/u.test(String.fromCodePoint(cp));
+  }
+  function ehCJK(cp) {
+    return (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0x20000 && cp <= 0x2A6DF) || (cp >= 0x2A700 && cp <= 0x2B73F) ||
+      (cp >= 0x2B740 && cp <= 0x2B81F) || (cp >= 0x2B820 && cp <= 0x2CEAF) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0x2F800 && cp <= 0x2FA1F);
+  }
+  function ehEspaco(ch) { return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || /\p{Zs}/u.test(ch); }
+  function ehControle(ch) { if (ch === "\t" || ch === "\n" || ch === "\r") return false; return /[\p{Cc}\p{Cf}]/u.test(ch); }
+
+  function palavrasBasicas(texto, minusculas) {
+    let limpo = "";
+    for (const ch of texto) {
+      const cp = ch.codePointAt(0);
+      if (cp === 0 || cp === 0xFFFD || ehControle(ch)) continue;
+      if (ehEspaco(ch)) limpo += " ";
+      else if (ehCJK(cp)) limpo += " " + ch + " ";
+      else limpo += ch;
+    }
+    const out = [];
+    for (let tok of limpo.trim().split(/ +/).filter(Boolean)) {
+      if (minusculas) tok = tok.toLowerCase().normalize("NFD").replace(/\p{Mn}/gu, "");
+      let atual = "";
+      for (const ch of tok) {
+        if (ehPont(ch.codePointAt(0))) { if (atual) out.push(atual); out.push(ch); atual = ""; } else atual += ch;
+      }
+      if (atual) out.push(atual);
+    }
+    return out;
+  }
+
+  function wordpiece(palavra) {
+    const chars = Array.from(palavra);
+    if (chars.length > 100) return [meta.tokenizador.unk];
+    const ids = []; let ini = 0;
+    while (ini < chars.length) {
+      let fim = chars.length, achou = -1;
+      while (ini < fim) {
+        let sub = chars.slice(ini, fim).join(""); if (ini > 0) sub = "##" + sub;
+        const id = vocab.get(sub);
+        if (id !== undefined) { achou = id; break; }
+        fim--;
+      }
+      if (achou < 0) return [meta.tokenizador.unk];
+      ids.push(achou); ini = fim;
+    }
+    return ids;
+  }
+
+  function tokenizar(texto) {
+    const tk = meta.tokenizador, L = meta.maxlen;
+    let ids = [tk.cls];
+    for (const p of palavrasBasicas(texto, tk.minusculas)) ids.push(...wordpiece(p));
+    ids = ids.slice(0, L - 1); ids.push(tk.sep);
+    const out = new BigInt64Array(L), am = new BigInt64Array(L);
+    ids.forEach((v, i) => { out[i] = BigInt(v); am[i] = 1n; });
+    for (let i = ids.length; i < L; i++) out[i] = BigInt(tk.pad);
+    return { ids: out, am, n: ids.length };
+  }
+
+  async function iniciar(repo, aoEstado) {
+    if (pronto) return meta;
+    base = /^(https?:|\/)/.test(repo) ? repo : `https://huggingface.co/${repo}/resolve/main/web/`;
+    aoEstado("carregando o ONNX Runtime");
+    if (!window.ort) await carregarScript(ORT + "ort.webgpu.min.js");
+    ort = window.ort; ort.env.wasm.wasmPaths = ORT;
+    meta = await (await fetch(base + "meta.json?t=" + Date.now(), { cache: "no-store" })).json();
+    const gpu = !!navigator.gpu && !!(await navigator.gpu.requestAdapter().catch(() => null));
+    if (!gpu && meta.dtype === "fp16") throw new Error("o modelo geral precisa de WebGPU. Use o Chrome ou o Edge atualizados num computador.");
+    const arquivos = [["texto.onnx", "texto"], ["dit.onnx", "dit"], ["vae.onnx", "vae"]];
+    const tam = meta.tamanhos || {}; const totalMB = Object.values(tam).reduce((a, b) => a + b, 0) / 1e6;
+    const feito = {};
+    const prog = (nome) => (n, t) => { feito[nome] = n; const mb = Object.values(feito).reduce((a, b) => a + b, 0) / 1e6;
+      aoEstado(`baixando o modelo geral, ${Math.round(mb)} de ${Math.round(totalMB || mb)} MB, só na primeira vez`); };
+    const [vtxt, ...bufs] = await Promise.all([
+      fetch(base + "vocab.txt?v=" + meta.tokenizador_versao).then((r) => r.text()),
+      ...arquivos.map(([f]) => baixar(base + f, f === "dit.onnx" ? meta.versao : "fixo", prog(f))),
+    ]);
+    vocab = new Map(vtxt.split("\n").map((w, i) => [w, i]));
+    aoEstado("preparando a rede na placa de vídeo");
+    const ep = gpu ? ["webgpu", "wasm"] : ["wasm"];
+    sess.texto = await ort.InferenceSession.create(bufs[0], { executionProviders: ["wasm"] });
+    sess.dit = await ort.InferenceSession.create(bufs[1], { executionProviders: ep });
+    sess.vae = await ort.InferenceSession.create(bufs[2], { executionProviders: ep });
+    pronto = true;
+    return meta;
+  }
+
+  async function codificar(textos) {
+    const L = meta.maxlen, D = meta.cfg.txt_dim, n = textos.length;
+    const ids = new BigInt64Array(n * L), am = new BigInt64Array(n * L), mask = new Uint8Array(n * L), palavras = [];
+    textos.forEach((t, i) => { const r = tokenizar(t); ids.set(r.ids, i * L); am.set(r.am, i * L); for (let j = 0; j < L; j++) mask[i * L + j] = r.am[j] === 0n ? 1 : 0; });
+    const o = await sess.texto.run({ ids: new ort.Tensor("int64", ids, [n, L]), am: new ort.Tensor("int64", am, [n, L]) });
+    return { h: o.h.data, pooled: o.pooled.data, mask, L, D };
+  }
+
+  function ruido(n, semente) {
+    let s = (semente >>> 0) || 1;
+    const r = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return (s + 0.5) / 4294967296; };
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i += 2) { const u = r(), v = r(), m = Math.sqrt(-2 * Math.log(u)); out[i] = m * Math.cos(2 * Math.PI * v); if (i + 1 < n) out[i + 1] = m * Math.sin(2 * Math.PI * v); }
+    return out;
+  }
+
+  async function decodificar(z, n) {
+    const c = meta.cfg; const o = await sess.vae.run({ z: new ort.Tensor("float32", z, [n, c.lat_ch, c.lat_res, c.lat_res]) });
+    const img = o.img.data, S = o.img.dims[2], imgs = [];
+    for (let b = 0; b < n; b++) {
+      const rgba = new Uint8ClampedArray(S * S * 4);
+      for (let i = 0; i < S * S; i++) { for (let k = 0; k < 3; k++) rgba[i * 4 + k] = (img[((b * 3 + k) * S * S) + i] + 1) * 127.5; rgba[i * 4 + 3] = 255; }
+      imgs.push(rgba);
+    }
+    return { imgs, S };
+  }
+
+  // gera n imagens ao mesmo tempo, com previa periodica da estimativa da imagem final
+  async function gerar(prompt, { n = 4, passos = 25, cfg = 4.5, semente = 0 }, aoPasso) {
+    const c = meta.cfg, Z = c.lat_ch * c.lat_res * c.lat_res;
+    const enc = await codificar([prompt, ""]);
+    const { L, D } = enc, B = 2 * n;
+    const txt = new Float32Array(B * L * D), pooled = new Float32Array(B * D), tmask = new Uint8Array(B * L);
+    for (let b = 0; b < B; b++) {
+      const src = b < n ? 0 : 1;
+      txt.set(enc.h.subarray(src * L * D, (src + 1) * L * D), b * L * D);
+      pooled.set(enc.pooled.subarray(src * D, (src + 1) * D), b * D);
+      tmask.set(enc.mask.subarray(src * L, (src + 1) * L), b * L);
+    }
+    const tTxt = new ort.Tensor("float32", txt, [B, L, D]), tPool = new ort.Tensor("float32", pooled, [B, D]), tMask = new ort.Tensor("bool", tmask, [B, L]);
+    let x = new Float32Array(n * Z);
+    for (let b = 0; b < n; b++) x.set(ruido(Z, semente + b * 7919), b * Z);
+    const cada = Math.max(1, Math.round(passos / 6));
+    for (let i = 0; i < passos; i++) {
+      const t = 1 - i / passos, t2 = 1 - (i + 1) / passos;
+      const xx = new Float32Array(B * Z); xx.set(x); xx.set(x, n * Z);
+      const o = await sess.dit.run({ x: new ort.Tensor("float32", xx, [B, c.lat_ch, c.lat_res, c.lat_res]), t: new ort.Tensor("float32", new Float32Array(B).fill(t), [B]), txt: tTxt, tmask: tMask, pooled: tPool });
+      const v = o.v.data, prev = new Float32Array(n * Z);
+      for (let k = 0; k < n * Z; k++) { const vv = v[n * Z + k] + cfg * (v[k] - v[n * Z + k]); prev[k] = x[k] - t * vv; x[k] += (t2 - t) * vv; }
+      const fim = i === passos - 1;
+      if (fim || (i + 1) % cada === 0) { const d = await decodificar(fim ? x : prev, n); await aoPasso(i + 1, passos, d.imgs, d.S, fim); }
+      else await aoPasso(i + 1, passos, null, 0, false);
+    }
+  }
+
+  return { iniciar, gerar, tokenizar: (t) => tokenizar(t), get meta() { return meta; }, get pronto() { return pronto; }, _palavras: palavrasBasicas };
+})();
+</script>
 <script>// Interface. Carrega os pesos, distribui as imagens entre os nucleos e monta o feed de trabalhos.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -590,7 +766,7 @@ self.onmessage = (e) => {
   }
 
   function montarSugestoes() {
-    const exemplos = [["um triângulo azul grande no centro", "Nunca visto"], ["um losango roxo pequeno no topo", "Novo"],
+    const exemplos = modo === "geral" ? SUG_GERAL : [["um triângulo azul grande no centro", "Nunca visto"], ["um losango roxo pequeno no topo", "Novo"],
                       ["um círculo laranja grande à direita", "Popular"]];
     const box = $("sugestoes"); box.innerHTML = "";
     for (const [p, selo] of exemplos) {
@@ -602,7 +778,7 @@ self.onmessage = (e) => {
     const mais = document.createElement("button"); mais.type = "button"; mais.className = "sug";
     mais.innerHTML = `<span class="t">Mais palavras</span><span aria-hidden="true">›</span>`;
     mais.onclick = () => { $("vocab").hidden = !$("vocab").hidden; };
-    box.appendChild(mais);
+    if (modo !== "geral") box.appendChild(mais);
   }
 
   function lembrarSessao(prompt) {
@@ -614,6 +790,7 @@ self.onmessage = (e) => {
   }
 
   function surpresa() {
+    if (modo === "geral") return SURPRESA_GERAL[Math.floor(Math.random() * SURPRESA_GERAL.length)];
     const g = cfg.grupos, r = (a) => a[Math.floor(Math.random() * a.length)];
     return `um ${r(g.formas)} ${r(g.cores)} ${r(g.tamanhos)} ${r(g.posicoes)}`;
   }
@@ -649,7 +826,7 @@ self.onmessage = (e) => {
     t.barra.parentElement.hidden = true;
     t.botoes.forEach((b) => (b.disabled = false));
     const m = $("miniatura"); m.textContent = "";
-    const c = document.createElement("canvas"); c.width = c.height = cfg.img;
+    const c = document.createElement("canvas"); c.width = c.height = t.S;
     c.getContext("2d").drawImage(t.cels[0].canvas, 0, 0); m.appendChild(c);
     salvarHistorico();
   }
@@ -673,17 +850,18 @@ self.onmessage = (e) => {
         </div>
       </div>`;
     const grade = el.querySelector(".grade");
-    const t = { id: ++contador, el, dados, cels: [], prog: [0, 0, 0, 0], inicio: performance.now(),
+    const S = dados.tam || cfg.img;
+    const t = { id: ++contador, el, dados, S, cels: [], prog: [0, 0, 0, 0], inicio: performance.now(),
                 barra: el.querySelector(".barra i"), tempo: el.querySelector(".tempo"), botoes: [...el.querySelectorAll(".botoes .bt")] };
     for (let i = 0; i < 4; i++) {
       const c = document.createElement("div"); c.className = "cel gerando";
-      c.innerHTML = `<canvas width="${cfg.img}" height="${cfg.img}"></canvas><span class="pct"></span>`;
+      c.innerHTML = `<canvas width="${S}" height="${S}"${dados.modelo === "geral" ? ' style="image-rendering:auto"' : ""}></canvas><span class="pct"></span>`;
       const cv = c.querySelector("canvas");
       const cel = { el: c, ctx: cv.getContext("2d"), canvas: cv, pct: c.querySelector(".pct"), pronta: false };
       c.onclick = () => cel.pronta && abrir(t, i);
       t.cels.push(cel); grade.appendChild(c);
     }
-    el.querySelector('[data-a="refazer"]').onclick = () => novoTrabalho(dados.prompt);
+    el.querySelector('[data-a="refazer"]').onclick = () => dados.modelo === "geral" ? novoTrabalhoGeral(dados.prompt) : novoTrabalho(dados.prompt);
     el.querySelector('[data-a="editar"]').onclick = () => { $("prompt").value = dados.prompt; $("prompt").focus(); };
     $("feed").prepend(el);
     trabalhos.set(t.id, t);
@@ -710,12 +888,65 @@ self.onmessage = (e) => {
     despachar();
   }
 
+  // modelo geral, roda na placa de video, um trabalho por vez
+  let filaGeral = Promise.resolve(), modo = "formas";
+  async function garantirGeral() {
+    if (MiniGeral.pronto) return;
+    const m = await MiniGeral.iniciar(GERAL_REPO, (txt) => estado(txt));
+    estado(`modelo geral pronto, prévia do passo ${m.passo.toLocaleString("pt-BR")} do treino`, false);
+  }
+  function novoTrabalhoGeral(prompt) {
+    const a = lerAjustes();
+    const palavras = prompt.split(/\s+/).filter(Boolean).map((p) => ({ p, ok: true }));
+    const t = criarCartao({ prompt, palavras, sementes: [a.semente], passos: a.passos, guidance: a.guidance, tipo: "geral, prévia", modelo: "geral", tam: 128 });
+    t.tempo.textContent = "na fila";
+    filaGeral = filaGeral.then(async () => {
+      try {
+        t.tempo.textContent = "carregando o modelo";
+        await garantirGeral();
+        t.inicio = performance.now(); t.tempo.textContent = "gerando";
+        await MiniGeral.gerar(prompt, { n: 4, passos: a.passos, cfg: a.guidance, semente: a.semente }, async (p, total, imgs, S, fim) => {
+          t.barra.style.width = (100 * p / total) + "%";
+          t.cels.forEach((c) => (c.pct.textContent = fim ? "" : Math.round(100 * p / total) + "%"));
+          if (imgs) imgs.forEach((rgba, i) => {
+            const c = t.cels[i];
+            if (c.canvas.width !== S) { c.canvas.width = c.canvas.height = S; t.S = S; }
+            c.ctx.putImageData(new ImageData(rgba, S, S), 0, 0);
+          });
+          if (fim) { t.cels.forEach((c) => { c.pronta = true; c.el.classList.remove("gerando"); }); concluir(t); }
+          await new Promise((r) => setTimeout(r, 0));
+        });
+      } catch (e) {
+        console.error(e);
+        t.tempo.textContent = "não foi possível gerar"; t.barra.parentElement.hidden = true;
+        t.botoes.forEach((b) => (b.disabled = false));
+        estado(e.message || String(e), false);
+      }
+    });
+  }
+
+  const SUG_GERAL = [["um cachorro correndo na grama", "Novo"], ["uma praia com coqueiros ao pôr do sol", "Popular"], ["a plate of pasta with tomato sauce", "Inglês"]];
+  const SURPRESA_GERAL = ["uma casa de madeira na floresta", "montanhas cobertas de neve", "um gato dormindo no sofá", "a red car on a city street",
+    "um prato de frutas tropicais", "a lighthouse at night", "um campo de flores amarelas", "a bowl of ramen", "uma cidade à noite com luzes", "um barco no lago"];
+  function mudarModo(novo) {
+    if (novo === "geral" && !GERAL_REPO) return;
+    modo = novo;
+    $("aba-formas").classList.toggle("on", modo === "formas"); $("aba-geral").classList.toggle("on", modo === "geral");
+    $("modelo").value = modo;
+    $("prompt").placeholder = modo === "geral"
+      ? "Descreva qualquer imagem, em português ou inglês. É uma prévia em treino, as imagens ainda saem borradas."
+      : "Descreva a imagem. Por enquanto o modelo conhece formas, cores, tamanhos e posições, como um triângulo azul grande no centro.";
+    montarSugestoes();
+    if (modo === "geral") $("vocab").hidden = true;
+  }
+
   // ampliacao, download e variacoes
   let aberto = null;
   function abrir(t, i) {
     aberto = { t, i };
-    const g = $("grande").getContext("2d");
-    g.putImageData(t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img), 0, 0);
+    const gc = $("grande"); gc.width = gc.height = t.S;
+    gc.style.imageRendering = t.dados.modelo === "geral" ? "auto" : "pixelated";
+    gc.getContext("2d").putImageData(t.cels[i].ctx.getImageData(0, 0, t.S, t.S), 0, 0);
     $("caixa-txt").textContent = t.dados.prompt;
     $("caixa").hidden = false;
   }
@@ -732,7 +963,8 @@ self.onmessage = (e) => {
   };
   $("variar").onclick = () => {
     const { t, i } = aberto; $("caixa").hidden = true;
-    novoTrabalho(t.dados.prompt, t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img).data);
+    if (t.dados.modelo === "geral") novoTrabalhoGeral(t.dados.prompt);
+    else novoTrabalho(t.dados.prompt, t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img).data);
     $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -776,11 +1008,15 @@ self.onmessage = (e) => {
   $("aba-galeria").onclick = () => $("galeria").scrollIntoView({ behavior: "smooth" });
   $("aba-gerar").onclick = () => { window.scrollTo({ top: 0, behavior: "smooth" }); $("prompt").focus(); };
   document.querySelector("[data-foco]").onclick = (e) => { e.preventDefault(); $("prompt").focus(); };
+  $("aba-formas").onclick = () => mudarModo("formas");
+  $("aba-geral").onclick = () => mudarModo("geral");
+  $("modelo").onchange = () => mudarModo($("modelo").value);
+  if (GERAL_REPO) { $("aba-geral").disabled = false; $("modelo").querySelector('option[value="geral"]').disabled = false; }
   $("surpresa").onclick = () => { $("prompt").value = surpresa(); $("prompt").focus(); };
   $("form").onsubmit = (e) => {
     e.preventDefault();
     const p = $("prompt").value.trim() || surpresa();
-    $("prompt").value = p; novoTrabalho(p);
+    $("prompt").value = p; modo === "geral" ? novoTrabalhoGeral(p) : novoTrabalho(p);
     $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
   };
 

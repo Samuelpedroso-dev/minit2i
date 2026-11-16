@@ -210,8 +210,8 @@ footer a{color:var(--cinza);text-decoration:underline}
 
     <form class="cartao" id="form">
       <div class="abas">
-        <button type="button" class="on"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Imagem de IA</button>
-        <button type="button" disabled>Geral<span class="selo quente">Treinando</span></button>
+        <button type="button" class="on" id="aba-formas"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Formas</button>
+        <button type="button" id="aba-geral" disabled>Geral<span class="selo quente">Prévia</span></button>
         <button type="button" disabled>Variações por imagem</button>
       </div>
       <div class="corpo-cartao">
@@ -231,7 +231,7 @@ footer a{color:var(--cinza);text-decoration:underline}
           </span>
           <button type="button" class="pilula" id="surpresa"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>Surpresa</button>
           <div class="direita">
-            <select id="modelo" title="modelo"><option>MiniT2I 0.1 Formas</option><option disabled>MiniT2I 0.2 Geral, em treino</option></select>
+            <select id="modelo" title="modelo"><option value="formas">MiniT2I 0.1 Formas</option><option value="geral" disabled>MiniT2I 0.2 Geral, prévia</option></select>
             <button type="submit" id="gerar" disabled title="Gerar"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
           </div>
         </div>
@@ -292,6 +292,8 @@ footer a{color:var(--cinza);text-decoration:underline}
 </div></div>
 
 <script type="text/plain" id="fonte-trabalhador">{{TRABALHADOR}}</script>
+<script>const GERAL_REPO = {{GERAL_REPO}};</script>
+<script>{{GERAL}}</script>
 <script>{{APP}}</script>
 </body>
 </html>

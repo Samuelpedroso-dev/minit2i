@@ -22,6 +22,9 @@ ap.add_argument("--dim", type=int, default=768)
 ap.add_argument("--prof", type=int, default=12)
 ap.add_argument("--cabecas", type=int, default=12)
 ap.add_argument("--min_shards", type=int, default=10)
+ap.add_argument("--hf_repo", default="minit2i", help="repositório público do Hugging Face com os pesos do site")
+ap.add_argument("--hf_treino", default="minit2i-treino", help="repositório privado com os checkpoints")
+ap.add_argument("--local", default="/content/ckpt", help="pasta local dos checkpoints quando há Hugging Face")
 ap.add_argument("--falso", action="store_true")
 a = ap.parse_args()
 
@@ -81,13 +84,35 @@ ema = copy.deepcopy(model).requires_grad_(False)
 opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.0, betas=(0.9, 0.99))
 scaler = torch.amp.GradScaler(enabled=cuda)
 passo, vistas = 0, 0
-CKPTS = [a.ckpt, a.ckpt[:-3] + "_b.pt" if a.ckpt.endswith(".pt") else a.ckpt + "_b"]
+# com HF_TOKEN, os checkpoints ficam no disco local e sobem para o Hugging Face, que é rápido.
+# sem ele, ficam no Drive como antes.
+api = None
+token = os.environ.get("HF_TOKEN", "").strip()
+if token and not a.falso:
+    from huggingface_hub import HfApi
+    api = HfApi(token=token)
+    usuario = api.whoami()["name"]
+    REPO_WEB, REPO_TREINO = f"{usuario}/{a.hf_repo}", f"{usuario}/{a.hf_treino}"
+    api.create_repo(REPO_WEB, exist_ok=True, private=False)
+    api.create_repo(REPO_TREINO, exist_ok=True, private=True)
+    print(f"Hugging Face conectado como {usuario}, site em {REPO_WEB}, checkpoints em {REPO_TREINO}", flush=True)
+    os.makedirs(a.local, exist_ok=True)
+    CKPTS = [os.path.join(a.local, "geral.pt"), os.path.join(a.local, "geral_b.pt")]
+    if not any(os.path.exists(c) for c in CKPTS) and "geral.pt" in api.list_repo_files(REPO_TREINO):
+        from huggingface_hub import hf_hub_download
+        hf_hub_download(REPO_TREINO, "geral.pt", local_dir=a.local, token=token)
+        print("checkpoint baixado do Hugging Face", flush=True)
+    CKPTS_LEITURA = CKPTS + [a.ckpt, a.ckpt[:-3] + "_b.pt"]
+else:
+    print("sem HF_TOKEN, checkpoints vão para o Drive", flush=True)
+    CKPTS = [a.ckpt, a.ckpt[:-3] + "_b.pt" if a.ckpt.endswith(".pt") else a.ckpt + "_b"]
+    CKPTS_LEITURA = CKPTS
 
 
 def melhor_ckpt():
     """Lê os dois arquivos alternados e fica com o de passo maior que abrir sem erro."""
     melhor, idx = None, -1
-    for i, c in enumerate(CKPTS):
+    for i, c in enumerate(CKPTS_LEITURA):
         if not os.path.exists(c):
             continue
         try:
@@ -95,7 +120,7 @@ def melhor_ckpt():
         except Exception as e:
             print(f"checkpoint {c} ilegível, ignorado ({e.__class__.__name__})", flush=True); continue
         if melhor is None or ck["passo"] > melhor["passo"]:
-            melhor, idx = ck, i
+            melhor, idx = ck, (i if i < len(CKPTS) else -1)
     return melhor, idx
 
 
@@ -107,6 +132,41 @@ if ck is not None:
     print(f"retomando do passo {passo}, {vistas/1e6:.2f} M imagens vistas", flush=True)
     del ck
 print(f"{sum(p.numel() for p in model.parameters())/1e6:.1f} M parametros treináveis", flush=True)
+
+
+import threading
+fixos, envio = None, None
+if api is not None:
+    import web_export
+    try:
+        fixos = web_export.preparar_fixos(api, REPO_WEB, texto, vae, dev)
+        print("encoder de texto e VAE do site prontos no Hugging Face", flush=True)
+    except Exception as e:
+        print(f"não consegui preparar o site no Hugging Face ({e}), o treino segue", flush=True)
+
+
+def enviar(caminho, passo_, vistas_, ema_estado):
+    """Roda em segundo plano. Sobe o checkpoint e publica o transformer do site."""
+    try:
+        t0 = time.time()
+        api.upload_file(path_or_fileobj=caminho, path_in_repo="geral.pt", repo_id=REPO_TREINO,
+                        commit_message=f"checkpoint passo {passo_}")
+        print(f"checkpoint do passo {passo_} no Hugging Face em {time.time()-t0:.0f}s", flush=True)
+        try:
+            api.super_squash_history(REPO_TREINO)  # apaga versões antigas, só o último checkpoint ocupa espaço
+        except Exception:
+            pass
+        if fixos is not None:
+            m = DiTGeral(**model.cfg); m.load_state_dict(ema_estado); m.eval()
+            dt = web_export.publicar(api, REPO_WEB, m, dev, passo_, vistas_, fixos, grade=str(amostras_dir / "ultima.png"))
+            print(f"site atualizado com o passo {passo_} em {dt:.0f}s", flush=True)
+            try:
+                api.super_squash_history(REPO_WEB)
+            except Exception:
+                pass
+            del m
+    except Exception as e:
+        print(f"falha ao enviar para o Hugging Face ({e}), tento de novo no próximo salvamento", flush=True)
 
 
 def compacto(obj):
@@ -133,6 +193,14 @@ def salvar():
                 "passo": passo, "vistas": vistas, "cfg": model.cfg}, tmp)
     os.replace(tmp, destino)
     print(f"checkpoint salvo em {os.path.basename(destino)} no passo {passo}", flush=True)
+    global envio
+    if api is not None:
+        if envio is not None and envio.is_alive():
+            print("envio anterior ainda em andamento, este fica só no disco local", flush=True)
+        else:
+            estado_ema = {k: v.detach().to("cpu", copy=True).float() for k, v in ema.state_dict().items()}
+            envio = threading.Thread(target=enviar, args=(destino, passo, vistas, estado_ema), daemon=False)
+            envio.start()
 
 
 def grade():
@@ -194,4 +262,6 @@ while time.time() - t0 < a.minutos * 60:
         if n: print(f"+{n} imagens novas, total {len(dados)}", flush=True)
 salvar()
 print("grade salva em", grade(), flush=True)
+if envio is not None:
+    envio.join()
 print(f"salvo no passo {passo}", flush=True)
