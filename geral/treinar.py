@@ -81,20 +81,58 @@ ema = copy.deepcopy(model).requires_grad_(False)
 opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.0, betas=(0.9, 0.99))
 scaler = torch.amp.GradScaler(enabled=cuda)
 passo, vistas = 0, 0
-if os.path.exists(a.ckpt):
-    ck = torch.load(a.ckpt, map_location=dev)
+CKPTS = [a.ckpt, a.ckpt[:-3] + "_b.pt" if a.ckpt.endswith(".pt") else a.ckpt + "_b"]
+
+
+def melhor_ckpt():
+    """Lê os dois arquivos alternados e fica com o de passo maior que abrir sem erro."""
+    melhor, idx = None, -1
+    for i, c in enumerate(CKPTS):
+        if not os.path.exists(c):
+            continue
+        try:
+            ck = torch.load(c, map_location="cpu")
+        except Exception as e:
+            print(f"checkpoint {c} ilegível, ignorado ({e.__class__.__name__})", flush=True); continue
+        if melhor is None or ck["passo"] > melhor["passo"]:
+            melhor, idx = ck, i
+    return melhor, idx
+
+
+ck, idx_lido = melhor_ckpt()
+if ck is not None:
     model.load_state_dict(ck["model"]); ema.load_state_dict(ck["ema"]); opt.load_state_dict(ck["opt"])
     if "scaler" in ck: scaler.load_state_dict(ck["scaler"])
     passo, vistas = ck["passo"], ck.get("vistas", 0)
     print(f"retomando do passo {passo}, {vistas/1e6:.2f} M imagens vistas", flush=True)
+    del ck
 print(f"{sum(p.numel() for p in model.parameters())/1e6:.1f} M parametros treináveis", flush=True)
 
 
+def compacto(obj):
+    """Tensores de ponto flutuante em bfloat16, o arquivo cai pela metade e sobe mais rápido para o Drive."""
+    if torch.is_tensor(obj):
+        return obj.detach().to("cpu", torch.bfloat16) if obj.is_floating_point() else obj.detach().cpu()
+    if isinstance(obj, dict):
+        return {k: compacto(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(compacto(v) for v in obj)
+    return obj
+
+
+n_salvos = idx_lido + 1  # o primeiro salvamento vai para o arquivo que NÃO foi lido
+
+
 def salvar():
-    tmp = a.ckpt + ".tmp"
-    torch.save({"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
-                "scaler": scaler.state_dict(), "passo": passo, "vistas": vistas, "cfg": model.cfg}, tmp)
-    os.replace(tmp, a.ckpt)
+    """Alterna entre dois arquivos, assim um salvamento que não terminou de subir nunca apaga o anterior."""
+    global n_salvos
+    destino = CKPTS[n_salvos % 2]; n_salvos += 1
+    tmp = destino + ".tmp"
+    torch.save({"model": compacto(model.state_dict()), "ema": compacto(ema.state_dict()),
+                "opt": compacto(opt.state_dict()), "scaler": scaler.state_dict(),
+                "passo": passo, "vistas": vistas, "cfg": model.cfg}, tmp)
+    os.replace(tmp, destino)
+    print(f"checkpoint salvo em {os.path.basename(destino)} no passo {passo}", flush=True)
 
 
 def grade():
@@ -147,7 +185,7 @@ while time.time() - t0 < a.minutos * 60:
               f"{vistas/1e6:.2f} M vistas {len(dados)/1e3:.0f} mil imagens", flush=True)
         t_log, v_log = time.time(), vistas
     agora = time.time()
-    if agora - ult_salvo > 900:
+    if agora - ult_salvo > 1800:
         salvar(); ult_salvo = agora
     if agora - ult_grade > 1800:
         print("grade salva em", grade(), flush=True); ult_grade = agora
