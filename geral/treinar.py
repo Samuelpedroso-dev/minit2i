@@ -127,6 +127,10 @@ def melhor_ckpt():
 ck, idx_lido = melhor_ckpt()
 if ck is not None:
     model.load_state_dict(ck["model"]); ema.load_state_dict(ck["ema"]); opt.load_state_dict(ck["opt"])
+    for p_, st in opt.state.items():  # o checkpoint compacto guarda o otimizador em bfloat16, volta ao tipo dos pesos
+        for k, v in list(st.items()):
+            if torch.is_tensor(v) and k != "step":
+                st[k] = v.to(p_.device, p_.dtype)
     if "scaler" in ck: scaler.load_state_dict(ck["scaler"])
     passo, vistas = ck["passo"], ck.get("vistas", 0)
     print(f"retomando do passo {passo}, {vistas/1e6:.2f} M imagens vistas", flush=True)
