@@ -30,7 +30,8 @@ class Atencao(nn.Module):
         q = self.q(x).view(B, N, self.h, hd).transpose(1, 2)
         k, v = self.kv(ctx).view(B, M, 2, self.h, hd).permute(2, 0, 3, 1, 4)
         q, k = self.qn(q), self.kn(k)
-        am = None if mask is None else (~mask)[:, None, None, :]  # True participa
+        # mascara aditiva no mesmo tipo da consulta, assim o grafo exportado para ONNX fica todo em float16
+        am = None if mask is None else torch.zeros(mask.shape, dtype=q.dtype, device=q.device).masked_fill(mask, torch.finfo(q.dtype).min)[:, None, None, :]
         o = F.scaled_dot_product_attention(q, k, v, attn_mask=am)
         return self.o(o.transpose(1, 2).reshape(B, N, D))
 

@@ -73,7 +73,7 @@ def _exportar(mod, args, caminho, entradas, saidas, dinamicos):
 
 
 def exportar_dit(ema, saida, dev):
-    dtype = torch.float16 if dev.type == "cuda" else torch.float32
+    dtype = torch.float16  # float16 tambem exporta na CPU, o site sempre roda por WebGPU
     import copy
     m = DiTWeb(copy.deepcopy(ema).to(dev, dtype).eval(), dtype)
     c = ema.cfg; B = 2
@@ -115,8 +115,9 @@ def exportar_texto(texto, saida):
 
 
 def exportar_vae(vae, saida, dev):
-    dtype = torch.float16 if dev.type == "cuda" else torch.float32
-    m = VAEWeb(vae.m.to(dev, dtype).eval(), dtype)
+    dtype = torch.float16
+    import copy
+    m = VAEWeb(copy.deepcopy(vae.m).to(dev, dtype).eval(), dtype)
     z = torch.randn(1, 4, 16, 16, device=dev)
     with torch.no_grad():
         _exportar(m, (z,), saida / "vae.onnx", ["z"], ["img"], {"z": {0: "lote", 2: "h", 3: "w"}, "img": {0: "lote", 2: "H", 3: "W"}})
@@ -146,7 +147,7 @@ def publicar(api, repo, ema, dev, passo, vistas, fixos, pasta="/content/web_expo
     exportar_dit(ema, saida, dev)
     tamanhos = dict(fixos["tamanhos"]); tamanhos["dit.onnx"] = (saida / "dit.onnx").stat().st_size
     meta = {"passo": passo, "vistas": vistas, "cfg": ema.cfg, "maxlen": MAXLEN, "data": time.strftime("%Y-%m-%d %H:%M"),
-            "dtype": "fp16" if dev.type == "cuda" else "fp32", "tokenizador": fixos["tokenizador"],
+            "dtype": "fp16", "tokenizador": fixos["tokenizador"],
             "tokenizador_versao": "1", "versao": f"{passo}", "tamanhos": tamanhos}
     (saida / "meta.json").write_text(json.dumps(meta))
     arquivos = ["dit.onnx", "meta.json"]

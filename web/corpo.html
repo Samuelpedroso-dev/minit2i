@@ -3,290 +3,131 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="MiniT2I, um gerador de imagens por texto de {{PARAMETROS}} parametros, treinado do zero e rodando inteiro no navegador.">
+<meta name="description" content="MiniT2I, gerador de imagens por texto treinado do zero, rodando no navegador.">
 <title>MiniT2I</title>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-:root{
-  --fundo:#0b0c0e;--lateral:#0f1012;--cartao:#17191c;--cartao2:#1e2024;--campo:#202328;
-  --linha:rgba(255,255,255,.08);--linha2:rgba(255,255,255,.14);
-  --texto:#f2f3f5;--cinza:#a3a7ae;--fraco:#6b7078;
-  --grad:linear-gradient(90deg,#ffd9c2 0%,#fff3ea 45%,#bfeefc 100%);
-  --acento:#5ad1ff;
-  --font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
-  color-scheme:dark;
-}
+:root{--fundo:#262624;--sup:#30302e;--sup2:#3a3a37;--linha:rgba(255,255,255,.09);--linha2:rgba(255,255,255,.16);
+  --texto:#f3f2ee;--cinza:#a3a29c;--fraco:#73726c;--acento:#d97757;
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--serif:ui-serif,Georgia,"Times New Roman",serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;color-scheme:dark}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--fundo);color:var(--texto);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased}
+html,body{margin:0;background:var(--fundo);color:var(--texto);font-family:var(--font);font-size:15px;-webkit-font-smoothing:antialiased}
 button,select,textarea,input{font:inherit;color:inherit}
 button{cursor:pointer}
-a{color:inherit;text-decoration:none}
 [hidden]{display:none!important}
-.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.col{max-width:780px;margin:0 auto;padding:0 18px}
 
-/* estrutura */
-.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
-aside{position:sticky;top:0;height:100vh;background:var(--lateral);border-right:1px solid var(--linha);display:flex;flex-direction:column;padding:14px 8px;overflow-y:auto}
-.logo{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;font-weight:700;font-size:19px;letter-spacing:-.01em}
-.logo svg{flex:none}
-.logo small{font-size:11px;font-weight:500;color:var(--fraco);font-family:var(--mono);margin-left:auto}
-nav a{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:10px;color:#e6e7ea;font-weight:500;font-size:14.5px}
-nav a:hover{background:rgba(255,255,255,.05)}
-nav a.ativo{background:#202226;color:#fff}
-nav svg{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.selo{white-space:nowrap;font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;background:rgba(90,209,255,.14);color:var(--acento);margin-left:auto}
-.selo.quente{background:rgba(255,140,60,.16);color:#ffa25a}
-.sep{height:1px;background:var(--linha);margin:12px 10px}
-.rot{font-size:13px;color:var(--fraco);padding:8px 12px 6px}
-#sessoes{display:flex;flex-direction:column;gap:2px}
-#sessoes button{background:none;border:0;text-align:left;padding:7px 12px;border-radius:8px;color:var(--cinza);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#sessoes button:hover{background:rgba(255,255,255,.05);color:#fff}
-.vazio-s{font-size:13px;color:var(--fraco);padding:4px 12px}
+.marca{position:fixed;top:14px;left:18px;font-family:var(--serif);font-size:18px;color:var(--cinza);z-index:3}
+.marca a{color:inherit;text-decoration:none}
 
-main{position:relative;min-width:0;padding:0 36px 80px}
-main::before{content:"";position:absolute;inset:0 0 auto 0;height:520px;pointer-events:none;
-  background:radial-gradient(ellipse 60% 70% at 50% 0%,rgba(70,120,160,.22),transparent 70%),
-             radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px) 0 0/22px 22px;
-  -webkit-mask-image:linear-gradient(#000,transparent);mask-image:linear-gradient(#000,transparent)}
-.topo{position:relative;display:flex;justify-content:flex-end;gap:8px;padding:14px 0}
-.bt-topo{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--linha2);background:rgba(255,255,255,.03);font-weight:600;font-size:13px}
-.bt-topo:hover{background:rgba(255,255,255,.08)}
-.bt-topo.claro{color:var(--cinza);font-weight:500}
+main{padding:70px 18px 210px}
+.vazio-feed{min-height:52vh;display:grid;place-items:center;text-align:center}
+.vazio-feed h1{font-family:var(--serif);font-weight:400;font-size:clamp(28px,4vw,40px);color:var(--texto);margin:0}
 
-.centro{position:relative;max-width:950px;margin:0 auto}
-h1{text-align:center;font-size:clamp(26px,3.4vw,36px);font-weight:400;letter-spacing:-.015em;margin:26px 0 24px}
-h1 b{font-weight:700}
-.chave{display:flex;width:320px;max-width:100%;margin:0 auto 34px;padding:4px;border-radius:999px;background:#2a2c30;border:1px solid var(--linha)}
-.chave button{flex:1;height:36px;border:0;border-radius:999px;background:none;color:#e9eaec;font-size:15px}
-.chave button.on{background:var(--grad);color:#2a2c30;font-weight:500;box-shadow:0 2px 14px rgba(191,238,252,.18)}
+.feed{display:flex;flex-direction:column;gap:34px}
+.trab{display:flex;flex-direction:column;gap:12px;animation:sobe .45s ease both}
+@keyframes sobe{from{opacity:0;transform:translateY(6px)}}
+.bolha{align-self:flex-end;max-width:80%;background:var(--sup2);border-radius:18px;padding:10px 16px;line-height:1.5;word-break:break-word}
+.bolha .ign{color:var(--fraco);text-decoration:line-through}
+.resposta{display:flex;flex-direction:column;gap:8px;max-width:560px}
+.grade{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cel{position:relative;aspect-ratio:1;background:var(--sup);border-radius:12px;overflow:hidden;cursor:zoom-in}
+.cel canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+.cel.gerando canvas{filter:saturate(.8)}
+.cel .pct{position:absolute;right:8px;bottom:8px;font:11px var(--mono);background:rgba(0,0,0,.55);padding:2px 7px;border-radius:6px}
+.cel .pct:empty{display:none}
+.info{display:flex;flex-direction:column;gap:6px}
+.meta{display:flex;flex-wrap:wrap;gap:2px 12px;font:11.5px var(--mono);color:var(--fraco)}
+.nota{font-size:12.5px;color:var(--fraco)}
+.barra{height:2px;border-radius:2px;background:var(--linha);position:relative;overflow:hidden}
+.barra i{position:absolute;inset:0 auto 0 0;background:var(--acento);transition:width .2s}
+.botoes{display:flex;gap:4px}
+.bt{height:30px;padding:0 11px;border-radius:8px;border:0;background:transparent;color:var(--cinza);font-size:13px}
+.bt:hover{background:var(--sup);color:var(--texto)}
+.bt:disabled{opacity:.35;pointer-events:none}
+.bt.cheio{background:var(--texto);color:#1d1d1b}
 
-/* cartao do prompt */
-.cartao{position:relative;z-index:2;background:linear-gradient(180deg,#1b1d21,#15171a);border:1px solid var(--linha2);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.abas{display:flex;gap:2px;padding:6px 6px 0;background:rgba(0,0,0,.18);overflow-x:auto;border-radius:18px 18px 0 0}
-.abas button{display:flex;align-items:center;gap:7px;border:0;background:none;padding:10px 18px;border-radius:12px 12px 0 0;color:var(--cinza);font-weight:600;font-size:13px;white-space:nowrap}
-.abas button.on{background:#202328;color:#fff}
-.abas button:disabled{opacity:.55;cursor:default}
-.corpo-cartao{background:#202328;padding:18px 18px 14px;border-radius:0 0 18px 18px}
-.linha-prompt{display:flex;gap:16px}
-.miniatura{flex:none;width:56px;height:68px;border-radius:8px;background:linear-gradient(135deg,#3a3d43,#2b2e33);transform:rotate(-6deg);display:grid;place-items:center;color:#8b9097;font-size:22px;margin:4px 4px 0}
-.miniatura canvas{width:100%;height:100%;border-radius:8px;image-rendering:pixelated}
-textarea#prompt{flex:1;min-height:76px;max-height:200px;resize:none;background:none;border:0;outline:0;font-size:15px;line-height:1.55;color:#fff;padding:4px 0}
-textarea#prompt::placeholder{color:#7d828a}
-.kbd{display:inline-block;border:1px solid var(--linha2);border-radius:5px;padding:0 6px;margin:0 3px;font-family:var(--mono);font-size:12px}
-.barra-cartao{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap}
-.pilula{position:relative;display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 11px;border-radius:9px;border:0;background:none;color:#e4e5e8;font-weight:500;font-size:13px}
-.pilula:hover,.pilula[aria-expanded=true]{background:rgba(255,255,255,.07)}
-.pilula svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.direita{margin-left:auto;display:flex;align-items:center;gap:10px}
-select#modelo{appearance:none;background:none;border:0;font-weight:600;font-size:13px;padding:6px 22px 6px 8px;border-radius:8px;cursor:pointer;
-  background-image:linear-gradient(45deg,transparent 50%,#bbb 50%),linear-gradient(135deg,#bbb 50%,transparent 50%);
-  background-position:calc(100% - 11px) 50%,calc(100% - 6px) 50%;background-size:5px 5px;background-repeat:no-repeat}
-select#modelo:hover{background-color:rgba(255,255,255,.07)}
-select#modelo option{background:#202328}
-#gerar{width:34px;height:34px;border-radius:50%;border:0;display:grid;place-items:center;background:#fff;color:#111;transition:transform .15s}
-#gerar:disabled{background:#4a4d53;color:#8d9198;cursor:default}
-#gerar:not(:disabled):hover{transform:scale(1.06)}
+.comando{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:24px 0 calc(14px + env(safe-area-inset-bottom,0px));
+  background:linear-gradient(transparent,var(--fundo) 30%)}
+form.caixa-prompt{background:var(--sup);border:1px solid var(--linha2);border-radius:22px;padding:14px 14px 10px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+form.caixa-prompt:focus-within{border-color:rgba(255,255,255,.26)}
+textarea#prompt{width:100%;min-height:26px;max-height:200px;resize:none;background:none;border:0;outline:0;font-size:16px;line-height:1.5;padding:2px 4px}
+textarea#prompt::placeholder{color:var(--fraco)}
+.linha-bar{display:flex;align-items:center;gap:6px;margin-top:8px}
+.icone{width:32px;height:32px;border-radius:9px;border:1px solid var(--linha2);background:none;display:grid;place-items:center;color:var(--cinza)}
+.icone:hover,.icone[aria-expanded=true]{background:var(--sup2);color:var(--texto)}
+.icone svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.direita{margin-left:auto;display:flex;align-items:center;gap:8px}
+select#modelo{appearance:none;background:none;border:0;color:var(--cinza);font-size:13px;padding:6px 20px 6px 8px;border-radius:8px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,#999 50%),linear-gradient(135deg,#999 50%,transparent 50%);
+  background-position:calc(100% - 10px) 52%,calc(100% - 6px) 52%;background-size:4px 4px;background-repeat:no-repeat}
+select#modelo:hover{background-color:var(--sup2);color:var(--texto)}
+select#modelo option{background:var(--sup)}
+#gerar{width:32px;height:32px;border-radius:9px;border:0;display:grid;place-items:center;background:var(--acento);color:#fff}
+#gerar:disabled{background:var(--sup2);color:var(--fraco);cursor:default}
 #gerar svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.painel{position:absolute;left:0;top:42px;z-index:20;width:300px;background:#26292e;border:1px solid var(--linha2);border-radius:14px;padding:14px;box-shadow:0 16px 40px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:14px;cursor:default;text-align:left}
+.estado{display:flex;justify-content:center;align-items:center;gap:7px;margin-top:8px;font:11.5px var(--mono);color:var(--fraco);min-height:16px}
+.ponto{width:5px;height:5px;border-radius:50%;background:var(--acento);animation:pulso 1.4s ease-in-out infinite}
+@keyframes pulso{50%{opacity:.25}}
+.ancora{position:relative}
+.painel{position:absolute;left:0;bottom:42px;z-index:20;width:270px;background:var(--sup2);border:1px solid var(--linha2);border-radius:14px;padding:14px;box-shadow:0 14px 40px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:12px}
 .painel label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--cinza)}
 .painel label span{display:flex;justify-content:space-between}
-.painel b{color:#fff;font-family:var(--mono);font-weight:500}
-.painel input[type=range]{width:100%;accent-color:#bfeefc}
-.painel input[type=text]{background:#1b1d21;border:1px solid var(--linha2);border-radius:8px;padding:7px 9px;font-family:var(--mono);font-size:12px}
-.painel .nota{font-size:11.5px;color:var(--fraco);margin:0}
+.painel b{font:500 12px var(--mono);color:var(--texto)}
+.painel input[type=range]{width:100%;accent-color:var(--acento)}
+.painel input[type=text]{background:var(--sup);border:1px solid var(--linha2);border-radius:8px;padding:6px 8px;font:12px var(--mono)}
+.painel .nota{margin:0}
 
-.sugestoes{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin:18px 0 6px}
-.sug{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:999px;border:1px solid var(--linha2);background:#15171a;color:#e8e9eb;font-weight:500;font-size:13.5px;max-width:250px}
-.sug span.t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sug:hover{background:#1f2125}
-.sug .selo{margin-left:0}
-.vocab{margin:14px auto 0;max-width:950px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.vocab > div{background:#15171a;border:1px solid var(--linha);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-.vocab .olho{font-size:11px;color:var(--fraco);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{border:1px solid var(--linha2);background:transparent;color:var(--cinza);padding:4px 10px;border-radius:999px;font-size:12.5px}
-.chip:hover{color:#fff;border-color:#fff}
-
-.estado{display:flex;justify-content:center;align-items:center;gap:8px;margin:18px 0 0;font-size:12px;color:var(--fraco);font-family:var(--mono)}
-.ponto{width:6px;height:6px;border-radius:50%;background:var(--acento);animation:pulso 1.4s ease-in-out infinite}
-@keyframes pulso{50%{opacity:.25}}
-
-/* galeria */
-.titulo-sec{display:flex;align-items:baseline;justify-content:space-between;max-width:1200px;margin:48px auto 14px}
-.titulo-sec h2{font-size:18px;font-weight:600;margin:0}
-.titulo-sec span{font-size:12.5px;color:var(--fraco)}
-.feed{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
-.vazio-feed{grid-column:1/-1;background:var(--cartao);border:1px dashed var(--linha2);border-radius:16px;padding:40px;text-align:center;color:var(--cinza)}
-.trab{background:var(--cartao);border:1px solid var(--linha);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;animation:sobe .6s cubic-bezier(.16,1,.3,1) both}
-@keyframes sobe{from{opacity:0;transform:translateY(8px)}}
-.grade{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#0d0e10}
-.cel{position:relative;aspect-ratio:1;background:#1a1c1f;overflow:hidden;cursor:zoom-in;border-radius:6px}
-.cel canvas{width:100%;height:100%;display:block;image-rendering:pixelated;transition:transform .3s}
-.cel:not(.gerando):hover canvas{transform:scale(1.04)}
-.cel.gerando canvas{filter:saturate(.7) blur(.3px)}
-.cel .pct{position:absolute;right:8px;bottom:8px;font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.6);padding:2px 7px;border-radius:6px}
-.cel .pct:empty{display:none}
-.info{display:flex;flex-direction:column;gap:9px;padding:13px 14px 14px}
-.info .prompt{font-size:14px;line-height:1.45;color:#fff;word-break:break-word}
-.info .prompt .ign{color:var(--fraco);text-decoration:line-through}
-.meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-family:var(--mono);font-size:11px;color:var(--fraco)}
-.nota{font-size:12px;color:var(--fraco)}
-.barra{height:3px;border-radius:3px;background:rgba(255,255,255,.08);position:relative;overflow:hidden}
-.barra i{position:absolute;inset:0 auto 0 0;background:var(--grad);transition:width .2s}
-.botoes{display:flex;gap:6px;flex-wrap:wrap}
-.bt{height:32px;padding:0 12px;border-radius:9px;border:1px solid var(--linha2);background:rgba(255,255,255,.03);font-size:12.5px;font-weight:500}
-.bt:hover{background:rgba(255,255,255,.09)}
-.bt.cheio{background:#fff;color:#111;border-color:#fff}
-.bt:disabled{opacity:.4;pointer-events:none}
-
-/* leitura */
-section.ler{max-width:1200px;margin:56px auto 0;display:grid;grid-template-columns:240px 1fr;gap:36px;padding-top:30px;border-top:1px solid var(--linha)}
-section.ler h2{font-size:20px;font-weight:600;margin:6px 0 0}
-section.ler .olho{font-size:11px;color:var(--acento);font-weight:600;letter-spacing:.08em;text-transform:uppercase}
-section.ler p{margin:0 0 14px;max-width:70ch;color:var(--cinza);line-height:1.65}
-.rolagem{overflow-x:auto;background:var(--cartao);border:1px solid var(--linha);border-radius:14px;margin:6px 0 18px}
-table.dados{border-collapse:collapse;width:100%;font-size:13px}
-table.dados th{font-size:11px;color:var(--fraco);font-weight:600;text-align:left;padding:11px 14px;border-bottom:1px solid var(--linha);text-transform:uppercase;letter-spacing:.04em}
-table.dados td{padding:10px 14px;border-bottom:1px solid var(--linha);font-family:var(--mono);color:#fff}
-table.dados tr:last-child td{border-bottom:0}
-table.dados td:first-child{font-family:var(--font);color:var(--cinza)}
-ol.versoes{list-style:none;padding:0;margin:0;display:grid;gap:8px}
-ol.versoes li{display:grid;grid-template-columns:70px 1fr auto;gap:14px;align-items:center;padding:13px 16px;border-radius:12px;background:var(--cartao);border:1px solid var(--linha);color:var(--cinza)}
-ol.versoes li b{font-family:var(--mono);color:#fff;font-weight:500}
-ol.versoes li.agora{border-color:rgba(191,238,252,.35)}
-footer{max-width:1200px;margin:56px auto 0;padding-top:20px;border-top:1px solid var(--linha);font-size:12px;color:var(--fraco)}
-footer a{color:var(--cinza);text-decoration:underline}
-
-/* ampliacao */
-.caixa{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.82);backdrop-filter:blur(6px);display:grid;place-items:center;padding:24px}
-.caixa .dentro{width:min(92vw,540px);background:var(--cartao);border:1px solid var(--linha2);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px}
-.caixa canvas{width:100%;aspect-ratio:1;image-rendering:pixelated;border-radius:12px;background:#000}
-.caixa p{margin:0 4px;color:#fff;font-size:14px}
-
-@media (max-width:900px){
-  .app{grid-template-columns:1fr}
-  aside{display:none}
-  main{padding:0 14px 60px}
-  .vocab{grid-template-columns:1fr 1fr}
-  section.ler{grid-template-columns:1fr;gap:12px}
-  .miniatura{display:none}
-}
+.caixa{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px}
+.caixa .dentro{width:min(92vw,540px);display:flex;flex-direction:column;gap:10px}
+.caixa canvas{width:100%;aspect-ratio:1;image-rendering:pixelated;border-radius:14px;background:#000}
+.caixa p{margin:0 2px;color:var(--cinza);font-size:14px}
 @media (prefers-reduced-motion:reduce){.trab,.ponto{animation:none}}
 </style>
 </head>
 <body>
-<div class="app">
-<aside>
-  <div class="logo">
-    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd9c2"/><stop offset="1" stop-color="#5ad1ff"/></linearGradient></defs><rect x="3" y="3" width="9" height="9" rx="2.5" fill="url(#lg)"/><circle cx="18.5" cy="7.5" r="4.5" fill="url(#lg)" opacity=".75"/><path d="M7.5 14.5l5 8.5h-10z" fill="url(#lg)" opacity=".6"/><rect x="14" y="14" width="9" height="9" rx="4.5" fill="url(#lg)" opacity=".9"/></svg>
-    MiniT2I <small>v{{VERSAO}}</small>
-  </div>
-  <nav>
-    <a href="#" class="ativo"><svg viewBox="0 0 24 24"><path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z"/></svg>Criar</a>
-    <a href="#galeria"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>Explorar</a>
-    <div class="sep"></div>
-    <a href="#" data-foco><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Imagem de IA</a>
-    <a href="#versoes"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Modelos<span class="selo">Novo</span></a>
-    <a href="#medicao"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Medição</a>
-    <a href="#sobre"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>Como funciona</a>
-    <a href="https://github.com/Samuelpedroso-dev/minit2i" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M9 19c-4 1.5-4-2-6-2.5M15 21v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>Código no GitHub</a>
-  </nav>
-  <div class="sep"></div>
-  <div class="rot">Sessões generativas</div>
-  <div id="sessoes"><div class="vazio-s">Suas gerações aparecem aqui</div></div>
-</aside>
+<div class="marca"><a href="https://github.com/Samuelpedroso-dev/minit2i" target="_blank" rel="noopener">MiniT2I</a></div>
 
-<main>
-  <div class="topo">
-    <a class="bt-topo" href="#versoes"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>Atualizações</a>
-    <a class="bt-topo claro" href="https://github.com/Samuelpedroso-dev/minit2i" target="_blank" rel="noopener">GitHub</a>
-  </div>
-
-  <div class="centro">
-    <h1>Escreva, e a rede <b>desenha</b> para você</h1>
-    <div class="chave"><button class="on" type="button" id="aba-gerar">Gerar</button><button type="button" id="aba-galeria">Galeria</button></div>
-
-    <form class="cartao" id="form">
-      <div class="abas">
-        <button type="button" class="on" id="aba-formas"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg>Formas</button>
-        <button type="button" id="aba-geral" disabled>Geral<span class="selo quente">Prévia</span></button>
-        <button type="button" disabled>Variações por imagem</button>
-      </div>
-      <div class="corpo-cartao">
-        <div class="linha-prompt">
-          <div class="miniatura" id="miniatura" title="última imagem gerada">+</div>
-          <textarea id="prompt" rows="3" placeholder="Descreva a imagem. Por enquanto o modelo conhece formas, cores, tamanhos e posições, como um triângulo azul grande no centro." disabled></textarea>
-        </div>
-        <div class="barra-cartao">
-          <span style="position:relative">
-          <button type="button" class="pilula" id="bt-ajustes" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Ajustes</button>
-            <div class="painel" id="painel" hidden>
-              <label><span>Passos <b id="passos-v">30</b></span><input type="range" id="passos" min="8" max="50" value="30"></label>
-              <label><span>Guidance <b id="guidance-v">4</b></span><input type="range" id="guidance" min="1" max="8" step="0.5" value="4"></label>
-              <label><span>Semente</span><input type="text" id="semente" placeholder="aleatória" inputmode="numeric"></label>
-              <p class="nota" id="nucleos"></p>
-            </div>
-          </span>
-          <button type="button" class="pilula" id="surpresa"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>Surpresa</button>
-          <div class="direita">
-            <select id="modelo" title="modelo"><option value="formas">MiniT2I 0.1 Formas</option><option value="geral" disabled>MiniT2I 0.2 Geral, prévia</option></select>
-            <button type="submit" id="gerar" disabled title="Gerar"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
-          </div>
-        </div>
-      </div>
-    </form>
-
-    <div class="sugestoes" id="sugestoes"></div>
-    <div class="estado" id="estado"><span class="ponto"></span><span id="estado-txt">carregando os pesos da rede</span></div>
-  </div>
-  <div class="vocab" id="vocab" hidden></div>
-
-  <div class="titulo-sec" id="galeria"><h2>Suas criações</h2><span>tudo gerado no seu navegador, nada sai do seu computador</span></div>
-  <div class="feed" id="feed"><div class="vazio-feed" id="vazio-feed">Escreva um prompt acima ou toque numa sugestão para começar.</div></div>
-
-  <section class="ler" id="sobre">
-    <div><span class="olho">como funciona</span><h2>O que roda aqui</h2></div>
-    <div>
-      <p>Um Diffusion Transformer de {{PARAMETROS_PT}} parâmetros com encoder de texto próprio, treinado do zero sem nenhum peso pré treinado. Os pesos chegam em float16 codificados em base64, {{TAMANHO}} no total, e cada imagem nasce do ruído puro e é limpa passo a passo no seu processador. Não existe servidor de inferência.</p>
-      <p>O treino usou rectified flow, e a geração usa classifier free guidance, que é o que faz a rede obedecer forte ao prompt. A conta é a mesma do PyTorch, reescrita em JavaScript puro e conferida num caso de referência. O erro máximo entre as duas implementações é {{ERRO_REF}} para valores de até {{ESCALA_REF}}, que é o arredondamento do float16.</p>
-      <p>Cada uma das quatro imagens roda num núcleo do seu processador ao mesmo tempo. O que você vê durante a geração é a melhor estimativa da rede para a imagem final naquele passo.</p>
-    </div>
-  </section>
-
-  <section class="ler" id="medicao">
-    <div><span class="olho">medição</span><h2>O quanto ela obedece</h2></div>
-    <div>
-      <p>Todas as 280 combinações de forma, cor, tamanho e posição, duas sementes cada, {{PASSOS_MED}} passos e guidance {{GUIDANCE_MED}}. Um classificador geométrico lê cada imagem gerada. Antes, ele foi conferido em 2.000 imagens reais do treino, onde acertou {{CLASSIF_TUDO}} dos atributos completos.</p>
-      {{TABELA}}
-      <p>As combinações nunca vistas são triângulo azul e losango amarelo, retiradas do treino de propósito. A rede viu triângulos, viu azul, mas nunca os dois juntos.</p>
-    </div>
-  </section>
-
-  <section class="ler" id="versoes">
-    <div><span class="olho">atualizações</span><h2>O que vem por aí</h2></div>
-    <div>
-      <p>Este repositório é atualizado em etapas, sempre com o modelo rodando inteiro no navegador e cada número medido.</p>
-      <ol class="versoes">
-        <li class="agora"><b>v0.1</b><span>Formas geométricas em 32 por 32, encoder de texto e DiT treinados do zero em CPU.</span><span class="selo">Publicada</span></li>
-        <li><b>v0.2</b><span>Gerador geral, qualquer prompt em português ou inglês, 120 milhões de parâmetros treinados em 2,9 milhões de fotos, a 128 por 128.</span><span class="selo quente">Treinando</span></li>
-        <li><b>v0.3</b><span>256 por 256, legendas melhores e mais dados.</span><span></span></li>
-        <li><b>v1.0</b><span>Um gerador geral no nível dos primeiros geradores públicos, rodando no seu computador.</span><span></span></li>
-      </ol>
-    </div>
-  </section>
-
-  <footer>MiniT2I, por Samuel Pedroso. Código e pesos em <a href="https://github.com/Samuelpedroso-dev/minit2i">github.com/Samuelpedroso-dev/minit2i</a>, licença MIT.</footer>
+<main class="col">
+  <div class="vazio-feed" id="vazio-feed"><h1>O que vamos criar?</h1></div>
+  <div class="feed" id="feed"></div>
+  <div id="galeria"></div>
 </main>
+
+<div class="comando"><div class="col">
+  <form class="caixa-prompt" id="form">
+    <textarea id="prompt" rows="1" placeholder="Descreva uma imagem" disabled></textarea>
+    <div class="linha-bar">
+      <span class="ancora">
+        <button type="button" class="icone" id="bt-ajustes" aria-expanded="false" title="Ajustes"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+        <div class="painel" id="painel" hidden>
+          <label><span>Passos <b id="passos-v">30</b></span><input type="range" id="passos" min="8" max="50" value="30"></label>
+          <label><span>Guidance <b id="guidance-v">4</b></span><input type="range" id="guidance" min="1" max="8" step="0.5" value="4"></label>
+          <label><span>Semente</span><input type="text" id="semente" placeholder="aleatória" inputmode="numeric"></label>
+          <p class="nota" id="nucleos"></p>
+        </div>
+      </span>
+      <button type="button" class="icone" id="surpresa" title="Prompt aleatório"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></button>
+      <div class="direita">
+        <select id="modelo" title="Modelo"><option value="geral" disabled>MiniT2I Geral</option><option value="formas">MiniT2I Formas</option></select>
+        <button type="submit" id="gerar" disabled title="Gerar"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      </div>
+    </div>
+  </form>
+  <div class="estado" id="estado"><span class="ponto"></span><span id="estado-txt">carregando</span></div>
+</div></div>
+
+<div hidden>
+  <button id="aba-formas"></button><button id="aba-geral" disabled></button><button id="aba-gerar"></button><button id="aba-galeria"></button>
+  <a data-foco href="#"></a><div id="vocab"></div><div id="sugestoes"></div><div id="sessoes"></div><div id="miniatura"></div>
 </div>
 
 <div class="caixa" id="caixa" hidden><div class="dentro">
   <canvas id="grande" width="32" height="32"></canvas>
   <p id="caixa-txt"></p>
   <div class="botoes">
-    <button class="bt cheio" id="baixar">Baixar ampliada</button>
-    <button class="bt" id="variar">Variações desta</button>
+    <button class="bt cheio" id="baixar">Baixar</button>
+    <button class="bt" id="variar">Variações</button>
     <button class="bt" id="fechar">Fechar</button>
   </div>
 </div></div>

@@ -113,18 +113,20 @@
     const el = document.createElement("article");
     el.className = "trab";
     const promptHTML = dados.palavras.map(({ p, ok }) => ok ? esc(p) : `<span class="ign" title="palavra que o modelo ainda não conhece">${esc(p)}</span>`).join(" ");
-    const ign = dados.palavras.filter((x) => !x.ok).length;
+    const ign = 0;
     el.innerHTML = `
+      <div class="bolha">${promptHTML || "<span class='ign'>prompt vazio</span>"}</div>
+      <div class="resposta">
       <div class="grade"></div>
       <div class="info">
-        <div class="prompt">${promptHTML || "<span class='ign'>prompt vazio</span>"}</div>
         <div class="meta num"><span>${dados.tipo}</span><span>semente ${dados.sementes[0]}</span><span>${dados.passos} passos</span><span>guidance ${String(dados.guidance).replace(".", ",")}</span><span class="tempo">na fila</span></div>
         ${ign ? `<div class="nota">As palavras riscadas ainda não fazem parte do vocabulário e foram ignoradas.</div>` : ""}
         <div class="barra"><i style="width:0"></i></div>
         <div class="botoes">
           <button class="bt" data-a="refazer" disabled>Refazer</button>
-          <button class="bt" data-a="editar" disabled>Editar prompt</button>
+          <button class="bt" data-a="editar" disabled>Editar</button>
         </div>
+      </div>
       </div>`;
     const grade = el.querySelector(".grade");
     const S = dados.tam || cfg.img;
@@ -140,7 +142,7 @@
     }
     el.querySelector('[data-a="refazer"]').onclick = () => dados.modelo === "geral" ? novoTrabalhoGeral(dados.prompt) : novoTrabalho(dados.prompt);
     el.querySelector('[data-a="editar"]').onclick = () => { $("prompt").value = dados.prompt; $("prompt").focus(); };
-    $("feed").prepend(el);
+    $("feed").append(el);
     trabalhos.set(t.id, t);
     lembrarSessao(dados.prompt);
     return t;
@@ -170,7 +172,7 @@
   async function garantirGeral() {
     if (MiniGeral.pronto) return;
     const m = await MiniGeral.iniciar(GERAL_REPO, (txt) => estado(txt));
-    estado(`modelo geral pronto, prévia do passo ${m.passo.toLocaleString("pt-BR")} do treino`, false);
+    estado(`passo ${m.passo.toLocaleString("pt-BR")} do treino`, false);
   }
   function novoTrabalhoGeral(prompt) {
     const a = lerAjustes();
@@ -210,9 +212,7 @@
     modo = novo;
     $("aba-formas").classList.toggle("on", modo === "formas"); $("aba-geral").classList.toggle("on", modo === "geral");
     $("modelo").value = modo;
-    $("prompt").placeholder = modo === "geral"
-      ? "Descreva qualquer imagem, em português ou inglês. É uma prévia em treino, as imagens ainda saem borradas."
-      : "Descreva a imagem. Por enquanto o modelo conhece formas, cores, tamanhos e posições, como um triângulo azul grande no centro.";
+    $("prompt").placeholder = modo === "geral" ? "Descreva uma imagem" : "um triângulo azul grande no centro";
     montarSugestoes();
     if (modo === "geral") $("vocab").hidden = true;
   }
@@ -242,7 +242,7 @@
     const { t, i } = aberto; $("caixa").hidden = true;
     if (t.dados.modelo === "geral") novoTrabalhoGeral(t.dados.prompt);
     else novoTrabalho(t.dados.prompt, t.cels[i].ctx.getImageData(0, 0, cfg.img, cfg.img).data);
-    $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   };
 
   // historico local, so as imagens prontas, como PNG pequeno
@@ -273,6 +273,7 @@
 
   $("passos").oninput = () => ($("passos-v").textContent = $("passos").value);
   $("guidance").oninput = () => ($("guidance-v").textContent = $("guidance").value.replace(".", ","));
+  $("prompt").addEventListener("input", () => { const p = $("prompt"); p.style.height = "auto"; p.style.height = p.scrollHeight + "px"; });
   $("prompt").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!$("gerar").disabled) $("form").requestSubmit(); }
   });
@@ -293,8 +294,9 @@
   $("form").onsubmit = (e) => {
     e.preventDefault();
     const p = $("prompt").value.trim() || surpresa();
-    $("prompt").value = p; modo === "geral" ? novoTrabalhoGeral(p) : novoTrabalho(p);
-    $("galeria").scrollIntoView({ behavior: "smooth", block: "start" });
+    modo === "geral" ? novoTrabalhoGeral(p) : novoTrabalho(p);
+    $("prompt").value = ""; $("prompt").style.height = "auto";
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
   };
 
   async function iniciar() {
@@ -319,8 +321,10 @@
       }
       $("nucleos").textContent = `${NUC} ${NUC > 1 ? "núcleos" : "núcleo"} em uso`;
       $("prompt").disabled = false; $("gerar").disabled = false;
-      estado(`modelo pronto, ${cfg.parametros.toLocaleString("pt-BR")} parâmetros carregados`, false);
-      if (!carregarHistorico()) novoTrabalho("um círculo vermelho grande à esquerda");
+      estado("", false);
+      if (GERAL_REPO) mudarModo("geral"); else mudarModo("formas");
+      carregarHistorico();
+      window.scrollTo({ top: document.body.scrollHeight });
     } catch (e) {
       estado("não foi possível carregar o modelo. Abra a página por um servidor, não como arquivo local.", false);
       console.error(e);
