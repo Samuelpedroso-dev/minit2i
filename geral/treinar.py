@@ -129,8 +129,8 @@ if ck is not None:
     model.load_state_dict(ck["model"]); ema.load_state_dict(ck["ema"]); opt.load_state_dict(ck["opt"])
     for p_, st in opt.state.items():  # o checkpoint compacto guarda o otimizador em bfloat16, volta ao tipo dos pesos
         for k, v in list(st.items()):
-            if torch.is_tensor(v) and k != "step":
-                st[k] = v.to(p_.device, p_.dtype)
+            if torch.is_tensor(v):
+                st[k] = v.float() if k == "step" else v.to(p_.device, p_.dtype)
     if "scaler" in ck: scaler.load_state_dict(ck["scaler"])
     passo, vistas = ck["passo"], ck.get("vistas", 0)
     print(f"retomando do passo {passo}, {vistas/1e6:.2f} M imagens vistas", flush=True)
@@ -178,7 +178,7 @@ def compacto(obj):
     if torch.is_tensor(obj):
         return obj.detach().to("cpu", torch.bfloat16) if obj.is_floating_point() else obj.detach().cpu()
     if isinstance(obj, dict):
-        return {k: compacto(v) for k, v in obj.items()}
+        return {k: (v if k == "step" else compacto(v)) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return type(obj)(compacto(v) for v in obj)
     return obj
