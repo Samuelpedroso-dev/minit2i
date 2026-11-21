@@ -11,10 +11,25 @@ const MiniGeral = (() => {
     });
   }
 
-  async function baixar(url, versao, aoProgresso) {
+  // quando ja existe uma versao antiga no cache, usa ela na hora e baixa a nova em segundo plano para a proxima visita
+  async function baixar(url, versao, aoProgresso, aceitarAntiga, aoUsarAntiga) {
     const chave = url + "?v=" + encodeURIComponent(versao);
     let cache = null;
-    try { cache = await caches.open("minit2i-geral"); const hit = await cache.match(chave); if (hit) { const b = await hit.arrayBuffer(); aoProgresso(b.byteLength, b.byteLength); return b; } } catch (e) { cache = null; }
+    try {
+      cache = await caches.open("minit2i-geral");
+      const hit = await cache.match(chave);
+      if (hit) { const b = await hit.arrayBuffer(); aoProgresso(b.byteLength, b.byteLength); return b; }
+      if (aceitarAntiga) {
+        for (const k of await cache.keys()) {
+          if (!k.url.startsWith(url + "?v=")) continue;
+          const velho = await cache.match(k); if (!velho) continue;
+          const b = await velho.arrayBuffer(); aoProgresso(b.byteLength, b.byteLength);
+          if (aoUsarAntiga) aoUsarAntiga(decodeURIComponent(k.url.split("?v=")[1] || ""));
+          baixar(url, versao, () => {}, false).catch(() => {});
+          return b;
+        }
+      }
+    } catch (e) { cache = null; }
     const r = await fetch(url);
     if (!r.ok) throw new Error(`${r.status} ao baixar ${url.split("/").pop()}`);
     const total = +r.headers.get("content-length") || 0;
@@ -103,7 +118,9 @@ const MiniGeral = (() => {
       aoEstado(`baixando o modelo geral, ${Math.round(mb)} de ${Math.round(totalMB || mb)} MB, só na primeira vez`); };
     const [vtxt, ...bufs] = await Promise.all([
       fetch(base + "vocab.txt?v=" + meta.tokenizador_versao).then((r) => r.text()),
-      ...arquivos.map(([f]) => baixar(base + f, f === "dit.onnx" ? meta.versao : "fixo", prog(f))),
+      ...arquivos.map(([f]) => f === "dit.onnx"
+        ? baixar(base + f, meta.versao, prog(f), true, (v) => { if (/^\d+$/.test(v)) meta.passo = +v; })
+        : baixar(base + f, "fixo", prog(f))),
     ]);
     vocab = new Map(vtxt.split("\n").map((w, i) => [w, i]));
     aoEstado("preparando a rede na placa de vídeo");
