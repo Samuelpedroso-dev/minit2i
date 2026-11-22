@@ -43,7 +43,7 @@ PROMPTS = ["um cachorro na grama", "a red car on a city street", "uma praia com 
 class Dados:
     """Latentes e tokens na GPU. Recarrega quando aparecem shards novos."""
     def __init__(self):
-        self.vistos, self.lat, self.ids = set(), None, None
+        self.vistos, self.lat, self.ids, self.cap = set(), None, None, []
 
     def atualizar(self):
         novos = sorted(p for p in dados_dir.glob("*.pt") if p.name not in self.vistos)
@@ -55,7 +55,7 @@ class Dados:
                 d = torch.load(p, map_location="cpu")
             except Exception:
                 continue
-            L.append(d["lat"]); I.append(d["ids"]); self.vistos.add(p.name)
+            L.append(d["lat"]); I.append(d["ids"]); self.cap += list(d.get("cap", [""] * len(d["lat"]))); self.vistos.add(p.name)
         if not L:
             return 0
         L, I = torch.cat(L).to(dev), torch.cat(I).to(dev)
@@ -224,6 +224,12 @@ def grade():
     return caminho
 
 
+painel = None
+if api is not None:
+    from ao_vivo import AoVivo
+    painel = AoVivo(api, REPO_WEB)
+    print("painel ao vivo ligado", flush=True)
+img_s_atual = 0.0
 t0 = ult_salvo = ult_grade = ult_dados = time.time()
 perdas, t_log, v_log = [], time.time(), vistas
 while time.time() - t0 < a.minutos * 60:
@@ -253,9 +259,13 @@ while time.time() - t0 < a.minutos * 60:
     passo += 1; vistas += a.lote; perdas.append(soma)
     if passo % 100 == 0:
         dt = time.time() - t_log
+        img_s_atual = (vistas - v_log) / dt
+        if painel is not None: painel.anotar(passo, np.mean(perdas[-100:]))
         print(f"passo {passo} perda {np.mean(perdas[-100:]):.4f} {(vistas - v_log)/dt:.0f} img/s "
               f"{vistas/1e6:.2f} M vistas {len(dados)/1e3:.0f} mil imagens", flush=True)
         t_log, v_log = time.time(), vistas
+    if painel is not None and passo % 25 == 0:
+        painel.capturar(ema, dados, texto, vae, passo, vistas, img_s_atual, np.mean(perdas[-100:]), dev)
     agora = time.time()
     if agora - ult_salvo > 1800:
         salvar(); ult_salvo = agora

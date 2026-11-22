@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MiniT2I ao vivo</title>
+<style>
+  :root { --fundo:#262624; --sup:#30302e; --sup2:#3a3a37; --borda:#45453f; --txt:#ece9e1; --fraco:#a19d93; --acento:#d97757; --verde:#7fb77e; }
+  * { box-sizing:border-box; margin:0; padding:0 }
+  body { background:var(--fundo); color:var(--txt); font:15px/1.45 ui-sans-serif,system-ui,"Segoe UI",sans-serif; min-height:100vh }
+  .topo { display:flex; align-items:center; justify-content:space-between; padding:18px 28px }
+  .marca { font-family:Georgia,serif; font-size:19px }
+  .marca a { color:var(--fraco); font:13px ui-sans-serif,system-ui; text-decoration:none; margin-left:14px }
+  .status { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--fraco) }
+  .ponto { width:9px; height:9px; border-radius:50%; background:#6b6962 }
+  .ponto.vivo { background:var(--verde); box-shadow:0 0 0 0 rgba(127,183,126,.6); animation:pulso 1.8s infinite }
+  @keyframes pulso { 70% { box-shadow:0 0 0 9px rgba(127,183,126,0) } 100% { box-shadow:0 0 0 0 rgba(127,183,126,0) } }
+  main { max-width:1180px; margin:0 auto; padding:0 24px 48px; display:grid; gap:18px }
+  .card { background:var(--sup); border:1px solid var(--borda); border-radius:16px; padding:20px 22px }
+  .rot { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--fraco); margin-bottom:10px }
+  .prog-num { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap }
+  .pct { font-size:54px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums }
+  .pct small { font-size:22px; color:var(--fraco); font-weight:400 }
+  .barra { height:12px; background:var(--sup2); border-radius:8px; overflow:hidden; margin:14px 0 18px }
+  .barra i { display:block; height:100%; width:0; background:linear-gradient(90deg,#c4613f,var(--acento),#e9a27f); border-radius:8px; transition:width 1.2s ease }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px }
+  .kpi { background:var(--sup2); border-radius:12px; padding:12px 14px }
+  .kpi b { display:block; font-size:22px; font-weight:600; font-variant-numeric:tabular-nums }
+  .kpi span { font-size:12px; color:var(--fraco) }
+  .duas { display:grid; grid-template-columns:1.55fr 1fr; gap:18px }
+  @media (max-width:900px) { .duas { grid-template-columns:1fr } .pct { font-size:42px } }
+  .motor-legenda { font-size:17px; min-height:26px; margin-bottom:14px }
+  .motor-legenda .cursor { display:inline-block; width:8px; height:18px; background:var(--acento); vertical-align:-3px; margin-left:2px; animation:pisca 1s steps(1) infinite }
+  @keyframes pisca { 50% { opacity:0 } }
+  .etapas { display:grid; grid-template-columns:1fr 92px 1fr 92px 1fr; align-items:center; gap:8px }
+  .etapa { text-align:center }
+  .quadro { position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; background:var(--sup2); border:1px solid var(--borda) }
+  .quadro img { width:100%; height:100%; object-fit:cover; display:block; opacity:0; transition:opacity .6s }
+  .quadro img.on { opacity:1 }
+  .quadro.ativo { border-color:var(--acento); box-shadow:0 0 0 2px rgba(217,119,87,.35) }
+  .etapa p { font-size:12px; color:var(--fraco); margin-top:8px }
+  .seta { height:2px; background:var(--borda); position:relative; overflow:hidden; border-radius:2px }
+  .seta i { position:absolute; inset:0; width:30%; background:var(--acento); transform:translateX(-120%) }
+  .seta.corre i { animation:corre .9s ease-in-out }
+  @keyframes corre { to { transform:translateX(420%) } }
+  .blocos { display:grid; grid-template-columns:repeat(12,1fr); gap:6px; margin-top:20px }
+  .bloco { display:flex; flex-direction:column; align-items:center; gap:4px }
+  .bloco canvas { width:100%; aspect-ratio:1; border-radius:6px; background:var(--sup2); opacity:.25; transition:opacity .25s, transform .25s }
+  .bloco canvas.on { opacity:1; transform:scale(1.06) }
+  .bloco span { font-size:10px; color:var(--fraco) }
+  .motor-rodape { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:16px; font-size:13px; color:var(--fraco) }
+  .motor-rodape b { color:var(--txt); font-weight:600 }
+  canvas#grafico { width:100%; height:230px; display:block }
+  .fila { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:6px }
+  .fila img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; opacity:.45; border:2px solid transparent; transition:all .3s; cursor:pointer }
+  .fila img.atual { opacity:1; border-color:var(--acento) }
+  .aviso { font-size:13px; color:var(--fraco); padding:10px 14px; background:var(--sup2); border-radius:10px; margin-top:12px; display:none }
+  .explica { font-size:13px; color:var(--fraco); margin-top:10px; line-height:1.55 }
+</style>
+</head>
+<body>
+<div class="topo">
+  <div class="marca">MiniT2I <a href="./">abrir o gerador</a></div>
+  <div class="status"><span class="ponto" id="ponto"></span><span id="status">conectando</span></div>
+</div>
+<main>
+  <section class="card">
+    <div class="rot">Progresso do treino</div>
+    <div class="prog-num"><div class="pct" id="pct">0<small>%</small></div><div id="sub" style="color:var(--fraco)"></div></div>
+    <div class="barra"><i id="barra"></i></div>
+    <div class="kpis">
+      <div class="kpi"><b id="k-vistas">0</b><span>imagens processadas</span></div>
+      <div class="kpi"><b id="k-passo">0</b><span>passos de otimização</span></div>
+      <div class="kpi"><b id="k-vel">0</b><span>imagens por segundo</span></div>
+      <div class="kpi"><b id="k-perda">0</b><span>perda atual</span></div>
+      <div class="kpi"><b id="k-falta">0</b><span>horas de GPU restantes</span></div>
+      <div class="kpi"><b id="k-dados">0</b><span>fotos diferentes no treino</span></div>
+    </div>
+    <div class="aviso" id="aviso"></div>
+  </section>
+
+  <div class="duas">
+    <section class="card">
+      <div class="rot">Motor neural, dados reais do treino</div>
+      <div class="motor-legenda" id="legenda"></div>
+      <div class="etapas">
+        <div class="etapa"><div class="quadro" id="q-real"><img id="i-real" alt=""></div><p>foto real do dataset</p></div>
+        <div class="seta" id="s1"><i></i></div>
+        <div class="etapa"><div class="quadro" id="q-ruido"><img id="i-ruido" alt=""></div><p id="p-ruido">foto com ruído</p></div>
+        <div class="seta" id="s2"><i></i></div>
+        <div class="etapa"><div class="quadro" id="q-prev"><img id="i-prev" alt=""></div><p>o que a rede reconstrói</p></div>
+      </div>
+      <div class="blocos" id="blocos"></div>
+      <div class="motor-rodape"><span>erro nesta foto <b id="m-perda">0</b></span><span>foto <b id="m-idx">0</b> de <b id="m-tot">0</b></span><span>capturado <b id="m-quando">agora</b></span></div>
+      <div class="fila" id="fila"></div>
+      <p class="explica">A cada dois minutos o treino separa fotos reais do lote, mistura ruído e pede para a rede adivinhar a foto original. Os quadrados mostram a intensidade de cada um dos 12 blocos do transformer em cada pedaço da imagem enquanto ele pensa.</p>
+    </section>
+    <section class="card">
+      <div class="rot">Perda ao longo do treino</div>
+      <canvas id="grafico"></canvas>
+      <p class="explica">A perda mede o erro da rede ao tirar o ruído das fotos. Quanto menor, melhor. Ela cai devagar porque cada foto recebe uma quantidade aleatória de ruído.</p>
+    </section>
+  </div>
+</main>
+<script>
+const REPO = "Diozey/minit2i";
+const BASE = `https://huggingface.co/${REPO}/resolve/main/`;
+const META = 15e6, VEL_PADRAO = 400000;
+let estado = null, atual = 0, ciclo = null, versao = "";
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString("pt-BR");
+const mi = (n) => (n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + " mi";
+
+const blocos = $("blocos");
+for (let i = 0; i < 12; i++) blocos.insertAdjacentHTML("beforeend", `<div class="bloco"><canvas width="8" height="8"></canvas><span>${i + 1}</span></div>`);
+const telas = [...blocos.querySelectorAll("canvas")];
+
+function haTempo(s) {
+  const d = Math.max(0, Date.now() / 1000 - s);
+  if (d < 90) return "agora";
+  if (d < 3600) return `há ${Math.round(d / 60)} min`;
+  if (d < 86400) return `há ${Math.round(d / 3600)} h`;
+  return `há ${Math.round(d / 86400)} dias`;
+}
+
+function progresso(vistas, passo, perda, velHora, dados, atualizado) {
+  const pct = Math.min(100, vistas / META * 100);
+  $("pct").innerHTML = pct.toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + "<small>%</small>";
+  $("barra").style.width = pct + "%";
+  $("sub").textContent = `${mi(vistas)} de 15 mi imagens`;
+  $("k-vistas").textContent = mi(vistas);
+  $("k-passo").textContent = fmt(passo);
+  $("k-perda").textContent = perda ? perda.toFixed(4) : "sem dado";
+  $("k-falta").textContent = Math.max(0, (META - vistas) / (velHora || VEL_PADRAO)).toFixed(0);
+  if (dados) $("k-dados").textContent = fmt(dados);
+  const vivo = Date.now() / 1000 - atualizado < 6 * 60;
+  $("ponto").className = "ponto" + (vivo ? " vivo" : "");
+  $("status").textContent = vivo ? "treinando agora" : `parado, última atualização ${haTempo(atualizado)}`;
+}
+
+function grafico(h) {
+  const c = $("grafico"), r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  const g = c.getContext("2d"); g.scale(dpr, dpr);
+  const W = r.width, H = r.height, m = { l: 44, r: 10, t: 10, b: 24 };
+  g.clearRect(0, 0, W, H);
+  if (!h || h.length < 2) { g.fillStyle = "#a19d93"; g.font = "13px system-ui"; g.fillText("o gráfico aparece quando o treino enviar dados", 10, H / 2); return; }
+  const xs = h.map((p) => p[0]), ys = h.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const sorted = [...ys].sort((a, b) => a - b);
+  const y0 = sorted[Math.floor(sorted.length * 0.02)] * 0.995, y1 = sorted[Math.floor(sorted.length * 0.98)] * 1.005;
+  const X = (v) => m.l + (v - x0) / (x1 - x0 || 1) * (W - m.l - m.r);
+  const Y = (v) => m.t + (1 - (Math.min(Math.max(v, y0), y1) - y0) / (y1 - y0 || 1)) * (H - m.t - m.b);
+  g.strokeStyle = "#45453f"; g.fillStyle = "#a19d93"; g.font = "11px system-ui"; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const v = y0 + (y1 - y0) * i / 4, y = Y(v); g.beginPath(); g.moveTo(m.l, y); g.lineTo(W - m.r, y); g.stroke(); g.fillText(v.toFixed(3), 4, y + 4); }
+  g.fillText(fmt(x0), m.l, H - 6); const t1 = fmt(x1); g.fillText(t1, W - m.r - g.measureText(t1).width, H - 6);
+  const suav = ys.map((_, i) => { const a = ys.slice(Math.max(0, i - 6), i + 1); return a.reduce((s, v) => s + v, 0) / a.length; });
+  g.strokeStyle = "rgba(217,119,87,.25)"; g.beginPath(); ys.forEach((v, i) => (i ? g.lineTo(X(xs[i]), Y(v)) : g.moveTo(X(xs[i]), Y(v)))); g.stroke();
+  g.strokeStyle = "#d97757"; g.lineWidth = 2; g.beginPath(); suav.forEach((v, i) => (i ? g.lineTo(X(xs[i]), Y(v)) : g.moveTo(X(xs[i]), Y(v)))); g.stroke();
+}
+
+function pintar(tela, valores, lado) {
+  const g = tela.getContext("2d"), img = g.createImageData(lado, lado);
+  const mn = Math.min(...valores), mx = Math.max(...valores);
+  valores.forEach((v, i) => {
+    const a = (v - mn) / (mx - mn || 1);
+    img.data[i * 4] = 40 + 205 * a; img.data[i * 4 + 1] = 38 + 110 * a * a; img.data[i * 4 + 2] = 36 + 50 * a; img.data[i * 4 + 3] = 255;
+  });
+  tela.width = lado; tela.height = lado; g.putImageData(img, 0, 0);
+}
+
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+async function digitar(texto) {
+  const el = $("legenda");
+  for (let i = 0; i <= texto.length; i++) { el.innerHTML = texto.slice(0, i).replace(/</g, "&lt;") + '<span class="cursor"></span>'; await espera(18); }
+}
+
+async function mostrar(i, ver) {
+  const a = estado.amostras[i], src = (f) => `${BASE}ao_vivo/${f}?v=${ver}`;
+  atual = i;
+  [...$("fila").children].forEach((im, k) => im.classList.toggle("atual", k === i));
+  ["i-real", "i-ruido", "i-prev"].forEach((id) => $(id).classList.remove("on"));
+  ["q-real", "q-ruido", "q-prev"].forEach((id) => $(id).classList.remove("ativo"));
+  telas.forEach((t) => t.classList.remove("on"));
+  $("m-idx").textContent = i + 1; $("m-tot").textContent = estado.amostras.length;
+  $("m-perda").textContent = a.perda.toFixed(3);
+  $("p-ruido").textContent = `foto com ${Math.round(a.t * 100)}% de ruído`;
+  $("i-real").src = src(a.real); $("i-ruido").src = src(a.ruido); $("i-prev").src = src(a.previsto);
+  await digitar(a.legenda || "sem legenda");
+  if (ver !== versao) return;
+  $("q-real").classList.add("ativo"); $("i-real").classList.add("on"); await espera(900);
+  $("s1").classList.remove("corre"); void $("s1").offsetWidth; $("s1").classList.add("corre"); await espera(700);
+  $("q-real").classList.remove("ativo"); $("q-ruido").classList.add("ativo"); $("i-ruido").classList.add("on"); await espera(900);
+  for (let b = 0; b < telas.length; b++) {
+    if (ver !== versao) return;
+    pintar(telas[b], a.camadas[b], estado.grade_lado || 8); telas[b].classList.add("on"); await espera(140);
+  }
+  $("s2").classList.remove("corre"); void $("s2").offsetWidth; $("s2").classList.add("corre"); await espera(700);
+  $("q-ruido").classList.remove("ativo"); $("q-prev").classList.add("ativo"); $("i-prev").classList.add("on");
+}
+
+async function rodar(ver) {
+  let i = 0;
+  while (ver === versao) {
+    await mostrar(i, ver);
+    await espera(3800);
+    i = (i + 1) % estado.amostras.length;
+  }
+}
+
+async function atualizar() {
+  let vivo = null, meta = null;
+  try { const r = await fetch(`${BASE}ao_vivo/estado.json?t=${Date.now()}`, { cache: "no-store" }); if (r.ok) vivo = await r.json(); } catch (e) {}
+  try { const r = await fetch(`${BASE}web/meta.json?t=${Date.now()}`, { cache: "no-store" }); if (r.ok) meta = await r.json(); } catch (e) {}
+  const metaT = meta ? Date.parse(meta.data.replace(" ", "T") + "Z") / 1000 : 0;
+  if (vivo && (!meta || vivo.passo >= meta.passo)) {
+    progresso(vivo.vistas, vivo.passo, vivo.perda, vivo.img_s * 3600, vivo.imagens_no_dataset, vivo.atualizado);
+    $("k-vel").textContent = fmt(Math.round(vivo.img_s));
+    $("aviso").style.display = "none";
+  } else if (meta) {
+    progresso(meta.vistas, meta.passo, vivo && vivo.perda, 0, vivo && vivo.imagens_no_dataset, metaT + 300);
+    $("k-vel").textContent = "sem dado";
+    $("aviso").style.display = "block";
+    $("aviso").textContent = vivo ? "O último salvamento é mais novo que a captura ao vivo." : "As capturas ao vivo começam na próxima sessão de treino. Por enquanto o painel mostra o último salvamento.";
+  }
+  if (vivo) {
+    grafico(vivo.historico);
+    $("m-quando").textContent = haTempo(vivo.atualizado);
+    const ver = String(vivo.atualizado);
+    if (ver !== versao) {
+      versao = ver; estado = vivo;
+      $("fila").innerHTML = vivo.amostras.map((a, k) => `<img src="${BASE}ao_vivo/${a.real}?v=${ver}" alt="" data-k="${k}">`).join("");
+      rodar(ver);
+    }
+  } else grafico(null);
+}
+$("fila").addEventListener("click", (e) => { const k = e.target.dataset && e.target.dataset.k; if (k !== undefined && estado) { versao = versao + "."; const v = versao; mostrar(+k, v).then(() => espera(3800)).then(() => { if (v === versao) rodar(v); }); } });
+addEventListener("resize", () => estado && grafico(estado.historico));
+atualizar(); setInterval(atualizar, 20000);
+</script>
+</body>
+</html>
