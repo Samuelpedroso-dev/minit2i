@@ -123,7 +123,7 @@ function haTempo(s) {
   return `há ${Math.round(d / 86400)} dias`;
 }
 
-function progresso(vistas, passo, perda, velHora, dados, atualizado) {
+function progresso(vistas, passo, perda, velHora, dados, atualizado, limiteMin = 6) {
   const pct = Math.min(100, vistas / META * 100);
   $("pct").innerHTML = pct.toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + "<small>%</small>";
   $("barra").style.width = pct + "%";
@@ -132,8 +132,8 @@ function progresso(vistas, passo, perda, velHora, dados, atualizado) {
   $("k-passo").textContent = fmt(passo);
   $("k-perda").textContent = perda ? perda.toFixed(4) : "sem dado";
   $("k-falta").textContent = Math.max(0, (META - vistas) / (velHora || VEL_PADRAO)).toFixed(0);
-  if (dados) $("k-dados").textContent = fmt(dados);
-  const vivo = Date.now() / 1000 - atualizado < 6 * 60;
+  $("k-dados").textContent = dados ? fmt(dados) : "sem dado";
+  const vivo = Date.now() / 1000 - atualizado < limiteMin * 60;
   $("ponto").className = "ponto" + (vivo ? " vivo" : "");
   $("status").textContent = vivo ? "treinando agora" : `parado, última atualização ${haTempo(atualizado)}`;
 }
@@ -218,7 +218,7 @@ async function atualizar() {
     $("k-vel").textContent = fmt(Math.round(vivo.img_s));
     $("aviso").style.display = "none";
   } else if (meta) {
-    progresso(meta.vistas, meta.passo, vivo && vivo.perda, 0, vivo && vivo.imagens_no_dataset, metaT + 300);
+    progresso(meta.vistas, meta.passo, vivo && vivo.perda, 0, vivo && vivo.imagens_no_dataset, metaT, 36);
     $("k-vel").textContent = "sem dado";
     $("aviso").style.display = "block";
     $("aviso").textContent = vivo ? "O último salvamento é mais novo que a captura ao vivo." : "As capturas ao vivo começam na próxima sessão de treino. Por enquanto o painel mostra o último salvamento.";
