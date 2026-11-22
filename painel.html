@@ -54,6 +54,11 @@
   .fila { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:6px }
   .fila img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; opacity:.45; border:2px solid transparent; transition:all .3s; cursor:pointer }
   .fila img.atual { opacity:1; border-color:var(--acento) }
+  #rede { width:100%; height:auto; display:block }
+  #rede .no { transition:fill .35s, r .35s }
+  #rede .ar { transition:stroke-opacity .35s }
+  #rede text { fill:#a19d93; font:11px ui-sans-serif,system-ui }
+  #rede text.grande { font-size:13px; fill:#ece9e1 }
   .aviso { font-size:13px; color:var(--fraco); padding:10px 14px; background:var(--sup2); border-radius:10px; margin-top:12px; display:none }
   .explica { font-size:13px; color:var(--fraco); margin-top:10px; line-height:1.55 }
 </style>
@@ -77,6 +82,12 @@
       <div class="kpi"><b id="k-dados">0</b><span>fotos diferentes no treino</span></div>
     </div>
     <div class="aviso" id="aviso"></div>
+  </section>
+
+  <section class="card">
+    <div class="rot">Cérebro da rede, ativação real de cada bloco nesta foto</div>
+    <svg id="rede" viewBox="0 0 1100 330"></svg>
+    <p class="explica">Cada coluna é um dos 12 blocos do transformer e cada bolinha é uma faixa da imagem. Quanto mais escura, mais aquele bloco está trabalhando ali. As linhas verdes mostram onde a atividade cresce de um bloco para o outro e as vermelhas onde ela diminui. Os valores vêm do treino de verdade, capturados junto com as fotos.</p>
   </section>
 
   <div class="duas">
@@ -169,6 +180,41 @@ function pintar(tela, valores, lado) {
   tela.width = lado; tela.height = lado; g.putImageData(img, 0, 0);
 }
 
+const NS = "http://www.w3.org/2000/svg", COLS = 12, LINHAS = 8;
+const rede = $("rede"), nos = [], arestas = [];
+(function montarRede() {
+  const x0 = 120, x1 = 960, y0 = 40, y1 = 290;
+  const X = (c) => x0 + (x1 - x0) * c / (COLS - 1), Y = (r) => y0 + (y1 - y0) * r / (LINHAS - 1);
+  const el = (t, at) => { const e = document.createElementNS(NS, t); for (const k in at) e.setAttribute(k, at[k]); return e; };
+  const gA = el("g", {}), gN = el("g", {});
+  rede.append(gA, gN);
+  for (let c = 0; c < COLS - 1; c++) { arestas[c] = [];
+    for (let r = 0; r < LINHAS; r++) for (let s = 0; s < LINHAS; s++) {
+      const l = el("line", { x1: X(c), y1: Y(r), x2: X(c + 1), y2: Y(s), class: "ar", stroke: "#7fb77e", "stroke-opacity": 0.04, "stroke-width": 1 });
+      gA.append(l); arestas[c].push({ l, r, s }); } }
+  for (let r = 0; r < LINHAS; r++) {
+    gA.append(el("line", { x1: 60, y1: Y(r), x2: x0, y2: Y(r), stroke: "#45453f" }));
+    const t = el("text", { x: 8, y: Y(r) + 4 }); t.textContent = `faixa ${r + 1}`; gN.append(t);
+  }
+  const saida = el("circle", { cx: 1040, cy: (y0 + y1) / 2, r: 16, fill: "#3a3a37", class: "no" });
+  for (let r = 0; r < LINHAS; r++) gA.append(el("line", { x1: x1, y1: Y(r), x2: 1040, y2: (y0 + y1) / 2, stroke: "#45453f", class: "ar", "stroke-opacity": 0.5 }));
+  for (let c = 0; c < COLS; c++) { nos[c] = [];
+    const t = el("text", { x: X(c) - 9, y: 22 }); t.textContent = `B${c + 1}`; gN.append(t);
+    for (let r = 0; r < LINHAS; r++) { const n = el("circle", { cx: X(c), cy: Y(r), r: 8, fill: "#3a3a37", stroke: "#45453f", class: "no" }); gN.append(n); nos[c].push(n); } }
+  gN.append(saida); nos.saida = saida;
+  const ts = el("text", { x: 1000, y: 318, class: "grande" }); ts.textContent = "reconstrução"; gN.append(ts);
+})();
+function linhasBloco(v, lado) { const out = []; for (let r = 0; r < LINHAS; r++) { let s = 0, n = 0; const r0 = Math.floor(r * lado / LINHAS), r1 = Math.floor((r + 1) * lado / LINHAS); for (let y = r0; y < r1; y++) for (let x = 0; x < lado; x++) { s += v[y * lado + x]; n++; } out.push(n ? s / n : 0); } const mn = Math.min(...out), mx = Math.max(...out); return out.map((a) => (a - mn) / (mx - mn || 1)); }
+const cor = (a) => `rgb(${Math.round(232 - 180 * a)},${Math.round(236 - 112 * a)},${Math.round(230 - 150 * a)})`;
+function limparRede() { nos.forEach((col) => col.forEach((n) => n.setAttribute("fill", "#3a3a37"))); arestas.forEach((c) => c.forEach((e) => e.l.setAttribute("stroke-opacity", 0.04))); nos.saida.setAttribute("fill", "#3a3a37"); }
+function acenderBloco(a, b) {
+  const lado = estado.grade_lado || 8, cur = linhasBloco(a.camadas[b], lado);
+  nos[b].forEach((n, r) => { n.setAttribute("fill", cor(cur[r])); n.setAttribute("stroke", "none"); });
+  if (b > 0) { const ant = linhasBloco(a.camadas[b - 1], lado);
+    arestas[b - 1].forEach(({ l, r, s }) => { const d = cur[s] - ant[r], f = ant[r] * cur[s];
+      l.setAttribute("stroke", d >= 0 ? "#7fb77e" : "#d97757"); l.setAttribute("stroke-opacity", (0.05 + 0.7 * f).toFixed(2)); l.setAttribute("stroke-width", (0.6 + 1.6 * f).toFixed(2)); }); }
+}
+
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 async function digitar(texto) {
   const el = $("legenda");
@@ -182,6 +228,7 @@ async function mostrar(i, ver) {
   ["i-real", "i-ruido", "i-prev"].forEach((id) => $(id).classList.remove("on"));
   ["q-real", "q-ruido", "q-prev"].forEach((id) => $(id).classList.remove("ativo"));
   telas.forEach((t) => t.classList.remove("on"));
+  limparRede();
   $("m-idx").textContent = i + 1; $("m-tot").textContent = estado.amostras.length;
   $("m-perda").textContent = a.perda.toFixed(3);
   $("p-ruido").textContent = `foto com ${Math.round(a.t * 100)}% de ruído`;
@@ -193,10 +240,11 @@ async function mostrar(i, ver) {
   $("q-real").classList.remove("ativo"); $("q-ruido").classList.add("ativo"); $("i-ruido").classList.add("on"); await espera(900);
   for (let b = 0; b < telas.length; b++) {
     if (ver !== versao) return;
-    pintar(telas[b], a.camadas[b], estado.grade_lado || 8); telas[b].classList.add("on"); await espera(140);
+    pintar(telas[b], a.camadas[b], estado.grade_lado || 8); telas[b].classList.add("on"); acenderBloco(a, b); await espera(160);
   }
   $("s2").classList.remove("corre"); void $("s2").offsetWidth; $("s2").classList.add("corre"); await espera(700);
   $("q-ruido").classList.remove("ativo"); $("q-prev").classList.add("ativo"); $("i-prev").classList.add("on");
+  nos.saida.setAttribute("fill", a.perda < 0.6 ? "#3d7a4f" : a.perda < 1 ? "#7fb77e" : "#d97757");
 }
 
 async function rodar(ver) {
