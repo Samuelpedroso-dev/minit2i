@@ -2,7 +2,7 @@
 
 # MiniT2I
 
-**A text to image model trained from scratch on free GPUs, running entirely in your browser.**
+**A text to image Diffusion Transformer trained from scratch on free GPUs, running entirely in your browser.**
 
 [![Live demo](https://img.shields.io/badge/Live%20demo-open-d97757?style=for-the-badge&labelColor=262624)](https://samuelpedroso-dev.github.io/minit2i/)
 [![Training dashboard](https://img.shields.io/badge/Training-live%20dashboard-7fb77e?style=for-the-badge&labelColor=262624)](https://samuelpedroso-dev.github.io/minit2i/painel.html)
@@ -15,7 +15,7 @@
 
 ## Overview
 
-MiniT2I is a 120 million parameter Diffusion Transformer that I am training from zero, with no pretrained image weights, on 2.9 million captioned photos from CC3M. Training runs on the free tier of Google Colab, switching between accounts whenever a session ends, and every checkpoint is published automatically to the web page.
+MiniT2I is a 120 million parameter Diffusion Transformer that I am training from zero, with no pretrained generator weights, on captioned photos from CC3M (2.9 million in the full set, about 720,000 distinct photos prepared so far). The generator is the part trained from scratch. It works on top of two pretrained models that stay frozen, a multilingual CLIP text encoder and the Stable Diffusion VAE, which give it the meaning of the prompt and the compressed image space. Training runs on the free tier of Google Colab, switching between accounts whenever a session ends, and every checkpoint is published automatically to the web page.
 
 Inference happens in the browser. You type a prompt in English or Portuguese, the page downloads the model once, and your own graphics card turns random noise into four 128 by 128 images through WebGPU. There is no inference server.
 
@@ -25,9 +25,9 @@ Inference happens in the browser. You type a prompt in English or Portuguese, th
 
 | | |
 |---|---|
-| Training step | 24,690 |
-| Images seen | 6.32 million of a 15 million target, about 42% |
-| Distinct photos in the training pool | about 770,000, growing as preprocessing continues |
+| Training step | 25,300 |
+| Images seen | 6.48 million of a 15 million target, about 43% (these are exposures, photos are revisited) |
+| Distinct photos in the training pool | about 720,000, growing as preprocessing continues |
 | Training loss (rectified flow) | 0.877, down from 0.90 at 2 million images |
 | Throughput | about 105 images per second on one Tesla T4 |
 | Remaining compute | about 22 GPU hours |
@@ -83,8 +83,26 @@ The classifier used for this measurement was checked first on 2,000 real trainin
 |---|---|
 | 0.1 | geometric shapes at 32 x 32, trained on CPU. Released |
 | **0.2** | general model, any prompt, 128 x 128, 15 million images on free T4s. **Training now** |
-| 0.3 | cleaned data without watermarks, new detailed captions from a vision model, fine tuning at 256 x 256 |
+| 0.3 | controlled experiments, one change at a time, see the plan below |
 | 0.4 | a larger transformer of 300 to 400 million parameters on CC12M |
+
+## Plan for 0.3
+
+The bottleneck right now is probably not the size of the transformer but the quality of what it learns from. So 0.3 is a series of controlled experiments instead of one big change. Every experiment starts from the same frozen 0.2 checkpoint, trains the same number of steps on the same shards and changes one thing.
+
+| id | change | status |
+|---|---|---|
+| E0 | baseline, same steps and data as the others | ready |
+| E1 | detailed captions from Florence 2, mixed with the originals, which are kept untouched | ready |
+| E2 | data cleaning by CLIP zero shot scores (watermark, text, blur) and sharpness | ready |
+| E3 | aspect ratio buckets instead of center crop | needs non square support in the model |
+| E4 | timestep distribution. 0.2 already samples logit normal, E4 mixes in uniform so the ends are not neglected | ready |
+| E5 | best combination of the above | after E1 to E4 |
+| E6 | fine tuning at 256 x 256 from the 128 checkpoint, the weights do not depend on resolution | after E5 |
+
+Each one is scored with `geral/avaliar.py` on a fixed, categorized prompt set (objects, animals, people, scenes, attribute binding, counting, spatial relations, Portuguese) with fixed seeds. It reports CLIP score with a CLIP model different from the one used in training, and FID against 5,000 held out CC3M validation photos. `geral/cego.py` builds an offline page for blind human A/B voting between two experiments. A larger model only comes after the data side is solved. The notebook is `colab/experimentos.ipynb`.
+
+On cost, 256 x 256 means 256 image tokens instead of 64. Self attention grows 16 times, but at this size most of the compute is in the linear layers, which grow 4 times, so a step costs roughly 4 to 5 times more.
 
 ## Run it yourself
 
@@ -113,6 +131,6 @@ python -m http.server                             # then open localhost:8000
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+The code is MIT, see [LICENSE](LICENSE). The license does not cover the training data. CC3M photos belong to their owners and are only referenced through the public dataset, never redistributed here.
 
 Built by [Samuel Pedroso](https://github.com/Samuelpedroso-dev).

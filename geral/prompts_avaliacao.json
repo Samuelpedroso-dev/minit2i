@@ -1,0 +1,10 @@
+{
+  "objects": ["a red car", "a wooden chair", "a cup of coffee on a table", "a bicycle leaning on a wall", "a bowl of fruit", "an old clock tower"],
+  "animals": ["a dog sitting on the grass", "a cat sleeping on a sofa", "a horse running in a field", "a bird on a branch", "a fish in an aquarium", "a cow in a pasture"],
+  "people": ["a portrait of a smiling woman", "a man riding a bicycle", "children playing in a park", "a chef cooking in a kitchen", "a couple walking on the beach", "a crowd at a concert"],
+  "scenes": ["mountains covered in snow", "a beach with palm trees at sunset", "a city street at night", "a forest with a small river", "a desert with sand dunes", "a lake reflecting the sky"],
+  "attributes": ["a blue car next to a red house", "a black dog and a white cat", "a yellow umbrella in the rain", "a green apple on a white plate", "a pink flower in a glass vase", "a purple sky over a dark sea"],
+  "counting": ["two dogs on a beach", "three apples on a table", "one person standing alone", "four birds on a wire", "two cars on a road", "three boats on a lake"],
+  "spatial": ["a cat on top of a car", "a ball under a chair", "a tree to the left of a house", "a lamp above a bed", "a dog in front of a door", "a boat beneath a bridge"],
+  "portuguese": ["um cachorro na grama", "uma praia com coqueiros ao pôr do sol", "um gato dormindo no sofá", "uma casa de madeira na floresta", "um prato de macarrão", "uma rua da cidade à noite"]
+}

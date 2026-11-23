@@ -11,8 +11,8 @@ MAXLEN = 48
 
 
 class Texto:
-    def __init__(self, dev, falso=False):
-        self.dev, self.falso = dev, falso
+    def __init__(self, dev, falso=False, maxlen=MAXLEN):
+        self.dev, self.falso, self.maxlen = dev, falso, maxlen
         if falso:
             g = torch.Generator().manual_seed(0)
             self.tabela = torch.randn(30000, 768, generator=g).to(dev)
@@ -31,12 +31,12 @@ class Texto:
 
     def tokenizar(self, textos):
         if self.falso:
-            ids = torch.zeros(len(textos), MAXLEN, dtype=torch.int32)
+            ids = torch.zeros(len(textos), self.maxlen, dtype=torch.int32)
             for i, t in enumerate(textos):
-                w = [101] + [hash(p) % 29000 + 1000 for p in t.lower().split()][: MAXLEN - 2] + [102]
+                w = [101] + [hash(p) % 29000 + 1000 for p in t.lower().split()][: self.maxlen - 2] + [102]
                 ids[i, : len(w)] = torch.tensor(w)
             return ids
-        return self.tok(list(textos), padding="max_length", truncation=True, max_length=MAXLEN,
+        return self.tok(list(textos), padding="max_length", truncation=True, max_length=self.maxlen,
                         return_tensors="pt").input_ids.int()
 
     @torch.no_grad()

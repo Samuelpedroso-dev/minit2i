@@ -3,7 +3,7 @@ checkpoint, salva a cada 15 minutos e gera uma grade de exemplos a cada 30. Shar
 o preparar.py terminar durante o treino entram automaticamente.
     python treinar.py --dados /content/drive/MyDrive/minit2i/dados --ckpt /content/drive/MyDrive/minit2i/geral.pt
 """
-import argparse, copy, os, pathlib, time
+import argparse, copy, json, os, pathlib, time
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import numpy as np
 import torch
@@ -26,6 +26,20 @@ ap.add_argument("--hf_repo", default="minit2i", help="repositório público do H
 ap.add_argument("--hf_treino", default="minit2i-treino", help="repositório privado com os checkpoints")
 ap.add_argument("--local", default="/content/ckpt", help="pasta local dos checkpoints quando há Hugging Face")
 ap.add_argument("--falso", action="store_true")
+# opções da 0.3. Sem elas o treino é exatamente o da 0.2.
+ap.add_argument("--legendas", default=None, help="pasta com os .jsonl do relegendar.py")
+ap.add_argument("--p_nova", type=float, default=0.8, help="chance de usar a legenda nova quando ela existe")
+ap.add_argument("--filtro", default=None, help="ex. marca_dagua<0.3,texto<0.4,nitidez>40")
+ap.add_argument("--restringir", default=None, help="usa só shards que têm .jsonl nesta pasta, para todos os experimentos verem as mesmas imagens")
+ap.add_argument("--maxlen", type=int, default=None, help="tokens de texto, as legendas novas são mais longas")
+ap.add_argument("--tempos", default="logit", help="logit, uniforme, desloc:3 ou misto:0.2")
+ap.add_argument("--decair_inicio", type=int, default=None, help="passo em que o learning rate começa a cair")
+ap.add_argument("--decair_fim", type=int, default=None, help="passo em que ele chega em --lr_min")
+ap.add_argument("--lr_min", type=float, default=0.0)
+ap.add_argument("--iniciar_de", default=None, help="checkpoint base quando este experimento ainda não tem o seu")
+ap.add_argument("--passos_exp", type=int, default=None, help="para depois de N passos contados do início do experimento")
+ap.add_argument("--decair_frac", type=float, default=None, help="com --passos_exp, decai o lr nessa fração final")
+ap.add_argument("--sem_site", action="store_true", help="não publica no site nem no painel, para experimentos")
 a = ap.parse_args()
 
 dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -40,42 +54,125 @@ PROMPTS = ["um cachorro na grama", "a red car on a city street", "uma praia com 
            "uma casa de madeira na floresta", "a portrait of a smiling woman"]
 
 
+def ler_filtro(txt):
+    regras = []
+    for r in (txt or "").split(","):
+        r = r.strip()
+        if not r:
+            continue
+        op = "<" if "<" in r else ">"
+        nome, v = r.split(op)
+        regras.append((nome.strip(), op, float(v)))
+    return regras
+
+
+REGRAS = ler_filtro(a.filtro)
+
+
+def passa(linha):
+    for nome, op, v in REGRAS:
+        x = linha["nitidez"] if nome == "nitidez" else linha["clip"][nome]
+        if (x >= v) if op == "<" else (x <= v):
+            return False
+    return True
+
+
 class Dados:
-    """Latentes e tokens na GPU. Recarrega quando aparecem shards novos."""
+    """Latentes e tokens na GPU. Recarrega quando aparecem shards novos. Com --legendas, guarda
+    também os tokens da legenda nova e quais linhas têm uma. Com --filtro, sorteia só as linhas
+    que passam."""
     def __init__(self):
         self.vistos, self.lat, self.ids, self.cap = set(), None, None, []
+        self.ids_nova, self.tem_nova, self.validos = None, None, None
+        self.tok = None  # o tokenizador entra depois, só quando precisa retokenizar
+        self.desalinhados, self.truncadas, self.n_novas = 0, 0, 0
+
+    def _legendas(self, p, n):
+        if not a.legendas:
+            return None
+        j = pathlib.Path(a.legendas) / (p.stem + ".jsonl")
+        if not j.exists():
+            return None
+        linhas = [json.loads(l) for l in open(j, encoding="utf-8")]
+        if len(linhas) != n:
+            self.desalinhados += 1
+            return None
+        return linhas
 
     def atualizar(self):
         novos = sorted(p for p in dados_dir.glob("*.pt") if p.name not in self.vistos)
         if not novos:
             return 0
-        L, I = [], []
+        L, I, IN, TN, V = [], [], [], [], []
         for p in novos:
+            if a.restringir and not (pathlib.Path(a.restringir) / (p.stem + ".jsonl")).exists():
+                continue
             try:
                 d = torch.load(p, map_location="cpu")
             except Exception:
                 continue
-            L.append(d["lat"]); I.append(d["ids"]); self.cap += list(d.get("cap", [""] * len(d["lat"]))); self.vistos.add(p.name)
+            n = len(d["lat"]); caps = list(d.get("cap", [""] * n))
+            linhas = self._legendas(p, n)
+            if linhas is not None and any(l["orig"] != c for l, c in zip(linhas, caps)):
+                self.desalinhados += 1; linhas = None
+            ids = d["ids"]
+            if self.tok is not None and ids.shape[1] != self.tok.maxlen:
+                ids = self.tok.tokenizar(caps)
+            L.append(d["lat"]); I.append(ids); self.cap += caps; self.vistos.add(p.name)
+            if self.tok is not None:
+                if linhas is not None:
+                    nov = [l["nova"] for l in linhas]
+                    IN.append(self.tok.tokenizar(nov)); TN.append(torch.ones(n, dtype=torch.bool))
+                    self.n_novas += n
+                    if not self.tok.falso:
+                        comp = self.tok.tok(nov, truncation=False).input_ids
+                        self.truncadas += sum(len(c) > self.tok.maxlen for c in comp)
+                else:
+                    IN.append(ids); TN.append(torch.zeros(n, dtype=torch.bool))
+            # sem .jsonl para o shard não há notas, então ele entra inteiro
+            V.append(torch.tensor([passa(l) for l in linhas], dtype=torch.bool) if (REGRAS and linhas is not None)
+                     else torch.ones(n, dtype=torch.bool))
         if not L:
             return 0
-        L, I = torch.cat(L).to(dev), torch.cat(I).to(dev)
+        base = len(self)
+        L, I, V = torch.cat(L).to(dev), torch.cat(I).to(dev), torch.cat(V)
         self.lat = L if self.lat is None else torch.cat([self.lat, L])
         self.ids = I if self.ids is None else torch.cat([self.ids, I])
+        if IN:
+            IN, TN = torch.cat(IN).to(dev), torch.cat(TN).to(dev)
+            self.ids_nova = IN if self.ids_nova is None else torch.cat([self.ids_nova, IN])
+            self.tem_nova = TN if self.tem_nova is None else torch.cat([self.tem_nova, TN])
+        v = (torch.nonzero(V).flatten() + base).to(dev)
+        self.validos = v if self.validos is None else torch.cat([self.validos, v])
         return len(L)
+
+    def sortear(self, mb):
+        return self.validos[torch.randint(0, len(self.validos), (mb,), device=dev)]
 
     def __len__(self):
         return 0 if self.lat is None else len(self.lat)
 
 
 dados = Dados()
+if a.legendas or a.maxlen:
+    from congelados import MAXLEN
+    dados.tok = Texto(torch.device("cpu"), a.falso, a.maxlen or MAXLEN)
+    if not a.falso:
+        dados.tok.m = None  # só o tokenizador é usado aqui
 while True:
     dados.atualizar()
     if len(dados.vistos) >= a.min_shards or a.falso:
         break
     print(f"esperando shards, {len(dados.vistos)} de {a.min_shards} prontos", flush=True); time.sleep(60)
 print(f"{len(dados)} imagens em {len(dados.vistos)} shards", flush=True)
+if a.legendas:
+    print(f"legendas novas em {dados.n_novas} imagens, {dados.truncadas} cortadas pelo limite de tokens, "
+          f"{dados.desalinhados} shards desalinhados ignorados", flush=True)
+if REGRAS:
+    print(f"filtro {a.filtro} deixa {len(dados.validos)} de {len(dados)} imagens", flush=True)
 
-texto, vae = Texto(dev, a.falso), VAE(dev, a.falso)
+from congelados import MAXLEN
+texto, vae = Texto(dev, a.falso, a.maxlen or MAXLEN), VAE(dev, a.falso)
 vazio = texto.tokenizar([""]).to(dev)
 res_lat = dados.lat.shape[-1]
 
@@ -125,6 +222,17 @@ def melhor_ckpt():
 
 
 ck, idx_lido = melhor_ckpt()
+exp_inicio = None
+if ck is not None:
+    exp_inicio = ck.get("exp_inicio")
+elif a.iniciar_de:
+    base = a.iniciar_de
+    if base == "hf":  # o checkpoint principal da 0.2, no repositório privado de sempre
+        from huggingface_hub import hf_hub_download
+        base = hf_hub_download(f"{usuario}/minit2i-treino", "geral.pt", local_dir="/content/base", token=token)
+    ck = torch.load(base, map_location="cpu")
+    exp_inicio = ck["passo"]
+    print(f"experimento novo, começando do checkpoint base no passo {exp_inicio}", flush=True)
 if ck is not None:
     model.load_state_dict(ck["model"]); ema.load_state_dict(ck["ema"]); opt.load_state_dict(ck["opt"])
     for p_, st in opt.state.items():  # o checkpoint compacto guarda o otimizador em bfloat16, volta ao tipo dos pesos
@@ -135,12 +243,16 @@ if ck is not None:
     passo, vistas = ck["passo"], ck.get("vistas", 0)
     print(f"retomando do passo {passo}, {vistas/1e6:.2f} M imagens vistas", flush=True)
     del ck
+if exp_inicio is None:
+    exp_inicio = passo
+if a.passos_exp:
+    print(f"experimento do passo {exp_inicio} ao {exp_inicio + a.passos_exp}, tempos {a.tempos}", flush=True)
 print(f"{sum(p.numel() for p in model.parameters())/1e6:.1f} M parametros treináveis", flush=True)
 
 
 import threading
 fixos, envio = None, None
-if api is not None:
+if api is not None and not a.sem_site:
     import web_export
     try:
         fixos = web_export.preparar_fixos(api, REPO_WEB, texto, vae, dev)
@@ -194,7 +306,8 @@ def salvar():
     tmp = destino + ".tmp"
     torch.save({"model": compacto(model.state_dict()), "ema": compacto(ema.state_dict()),
                 "opt": compacto(opt.state_dict()), "scaler": scaler.state_dict(),
-                "passo": passo, "vistas": vistas, "cfg": model.cfg}, tmp)
+                "passo": passo, "vistas": vistas, "cfg": model.cfg, "exp_inicio": exp_inicio,
+                "opcoes": {k: v for k, v in vars(a).items() if k not in ("dados", "ckpt", "local")}}, tmp)
     os.replace(tmp, destino)
     print(f"checkpoint salvo em {os.path.basename(destino)} no passo {passo}", flush=True)
     global envio
@@ -209,7 +322,7 @@ def salvar():
 
 def grade():
     ema.eval()
-    cond = texto(texto.tokenizar(PROMPTS).to(dev))
+    cond = texto(texto.tokenizar(PROMPTS).to(dev))  # vazio já tem o mesmo comprimento, veio do mesmo texto
     inc = texto(vazio.expand(len(PROMPTS), -1))
     z = amostrar(ema, cond, inc, passos=25, cfg=4.5, semente=0)
     img = ((vae.decodificar(z) + 1) * 127.5).round().clamp(0, 255).byte().permute(0, 2, 3, 1).cpu().numpy()
@@ -225,29 +338,49 @@ def grade():
 
 
 painel = None
-if api is not None:
+if api is not None and not a.sem_site:
     from ao_vivo import AoVivo
     painel = AoVivo(api, REPO_WEB)
     print("painel ao vivo ligado", flush=True)
 img_s_atual = 0.0
 t0 = ult_salvo = ult_grade = ult_dados = time.time()
 perdas, t_log, v_log = [], time.time(), vistas
-while time.time() - t0 < a.minutos * 60:
+def taxa(p):
+    """Aquecimento de 2000 passos, depois constante. Com decaimento, cai em linha reta até lr_min."""
+    lr = a.lr * min(1.0, (p + 1) / 2000)
+    ini, fim = a.decair_inicio, a.decair_fim
+    if a.passos_exp and a.decair_frac:
+        fim = exp_inicio + a.passos_exp
+        ini = fim - int(a.passos_exp * a.decair_frac)
+    if ini is not None and fim is not None and p >= ini:
+        f = min(1.0, (p - ini) / max(1, fim - ini))
+        lr = lr + (a.lr_min - lr) * f
+    return lr
+
+
+def acabou():
+    return a.passos_exp is not None and passo - exp_inicio >= a.passos_exp
+
+
+while time.time() - t0 < a.minutos * 60 and not acabou():
     for g in opt.param_groups:
-        g["lr"] = a.lr * min(1.0, (passo + 1) / 2000)
+        g["lr"] = taxa(passo)
     opt.zero_grad(set_to_none=True)
     mb = a.lote // a.acum
     soma = 0.0
     for _ in range(a.acum):
-        idx = torch.randint(0, len(dados), (mb,), device=dev)
+        idx = dados.sortear(mb)
         x0 = dados.lat[idx].float()
         x0 = torch.where(torch.rand(mb, 1, 1, 1, device=dev) < 0.5, x0.flip(3), x0)
         ids = dados.ids[idx]
+        if dados.ids_nova is not None:
+            usar = dados.tem_nova[idx] & (torch.rand(mb, device=dev) < a.p_nova)
+            ids = torch.where(usar[:, None], dados.ids_nova[idx], ids)
         drop = torch.rand(mb, device=dev) < 0.1
         ids = torch.where(drop[:, None], vazio.expand(mb, -1), ids)
         txt, tmask, pooled = texto(ids)
         with torch.autocast(dev.type, dtype=torch.float16, enabled=cuda):
-            loss = perda_rf(model, x0, txt, tmask, pooled) / a.acum
+            loss = perda_rf(model, x0, txt, tmask, pooled, a.tempos) / a.acum
         scaler.scale(loss).backward()
         soma += loss.item()
     scaler.unscale_(opt); torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -261,7 +394,7 @@ while time.time() - t0 < a.minutos * 60:
         dt = time.time() - t_log
         img_s_atual = (vistas - v_log) / dt
         if painel is not None: painel.anotar(passo, np.mean(perdas[-100:]))
-        print(f"passo {passo} perda {np.mean(perdas[-100:]):.4f} {(vistas - v_log)/dt:.0f} img/s "
+        print(f"passo {passo} perda {np.mean(perdas[-100:]):.4f} lr {taxa(passo):.2e} {(vistas - v_log)/dt:.0f} img/s "
               f"{vistas/1e6:.2f} M vistas {len(dados)/1e3:.0f} mil imagens", flush=True)
         t_log, v_log = time.time(), vistas
     if painel is not None and passo % 25 == 0:

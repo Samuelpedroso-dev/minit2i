@@ -105,9 +105,28 @@ class DiTGeral(nn.Module):
         return h.reshape(B, self.ch, self.res, self.res)
 
 
-def perda_rf(model, x0, txt, tmask, pooled):
+def sortear_t(B, dev, modo="logit"):
+    """Como os tempos do treino são sorteados. logit é o padrão desde o início da 0.2, logit normal
+    como no SD3, que já concentra no meio da trajetória. uniforme serve de comparação. desloc:S
+    empurra os tempos para o lado mais ruidoso, o que o SD3 recomenda ao subir a resolução.
+    misto:P troca uma fração P do logit por uniforme, para não abandonar as pontas."""
+    t = torch.sigmoid(torch.randn(B, device=dev))
+    if modo == "logit":
+        return t
+    if modo == "uniforme":
+        return torch.rand(B, device=dev)
+    nome, _, v = modo.partition(":")
+    v = float(v)
+    if nome == "desloc":
+        return v * t / (1 + (v - 1) * t)
+    if nome == "misto":
+        return torch.where(torch.rand(B, device=dev) < v, torch.rand(B, device=dev), t)
+    raise ValueError(f"modo de tempos desconhecido {modo}")
+
+
+def perda_rf(model, x0, txt, tmask, pooled, tempos="logit"):
     B = x0.shape[0]
-    t = torch.sigmoid(torch.randn(B, device=x0.device))
+    t = sortear_t(B, x0.device, tempos)
     z = torch.randn_like(x0)
     tt = t[:, None, None, None]
     xt = (1 - tt) * x0 + tt * z
@@ -115,13 +134,16 @@ def perda_rf(model, x0, txt, tmask, pooled):
 
 
 @torch.no_grad()
-def amostrar(model, cond, incond, passos=25, cfg=4.5, semente=0, shape=None):
-    """cond e incond sao tuplas (txt, mask, pooled) com o mesmo tamanho de lote."""
+def amostrar(model, cond, incond, passos=25, cfg=4.5, semente=0, shape=None, desloc=1.0):
+    """cond e incond sao tuplas (txt, mask, pooled) com o mesmo tamanho de lote. desloc maior que 1
+    gasta mais passos na parte ruidosa, onde a composicao e decidida."""
     txt, mask, pooled = cond
     B = txt.shape[0]; dev = txt.device
     g = torch.Generator(device="cpu").manual_seed(semente)
     x = torch.randn(B, model.ch, model.res, model.res, generator=g).to(dev)
     ts = torch.linspace(1, 0, passos + 1, device=dev)
+    if desloc != 1.0:
+        ts = desloc * ts / (1 + (desloc - 1) * ts)
     T2 = torch.cat([txt, incond[0]]); M2 = torch.cat([mask, incond[1]]); P2 = torch.cat([pooled, incond[2]])
     for i in range(passos):
         t = ts[i].expand(2 * B)
