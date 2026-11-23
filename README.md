@@ -1,161 +1,118 @@
+<div align="center">
+
 # MiniT2I
 
-Um gerador de imagens por texto de 2.666.800 parâmetros, treinado do zero,
-rodando inteiro no navegador. Você escreve o prompt, a rede parte do ruído puro
-e limpa a imagem passo a passo no seu processador, quatro imagens por vez, no
-estilo do Midjourney.
+**A text to image model trained from scratch on free GPUs, running entirely in your browser.**
 
-A página está em **[samuelpedroso-dev.github.io/minit2i](https://samuelpedroso-dev.github.io/minit2i/)**.
-Tudo que aparece lá é calculado no seu navegador. Não existe servidor de
-inferência.
+[![Live demo](https://img.shields.io/badge/Live%20demo-open-d97757?style=for-the-badge&labelColor=262624)](https://samuelpedroso-dev.github.io/minit2i/)
+[![Training dashboard](https://img.shields.io/badge/Training-live%20dashboard-7fb77e?style=for-the-badge&labelColor=262624)](https://samuelpedroso-dev.github.io/minit2i/painel.html)
+![Version](https://img.shields.io/badge/version-0.2%20in%20training-c9d1d9?style=for-the-badge&labelColor=262624)
+![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=for-the-badge&labelColor=262624)
 
-Esta é a versão 0.1, e ela é pequena de propósito. O modelo só conhece formas
-geométricas em 32 por 32. O objetivo desta etapa é provar a arquitetura inteira,
-do treino à página, com medição honesta, antes de escalar. **O repositório vai
-receber atualizações**, a próxima já com fotos reais, e o roteiro está no fim
-deste arquivo.
+![Results at step 20,039](resultados/geral_passo_20039.png)
 
-![grade de resultados](resultados/grade.png)
+</div>
 
----
+## Overview
 
-## O que roda no navegador
+MiniT2I is a 120 million parameter Diffusion Transformer that I am training from zero, with no pretrained image weights, on 2.9 million captioned photos from CC3M. Training runs on the free tier of Google Colab, switching between accounts whenever a session ends, and every checkpoint is published automatically to the web page.
 
-Os pesos chegam em float16 codificados em base64, 7,1 MB no total. Um
-encoder de texto de duas camadas lê o prompt, e um Diffusion Transformer de seis
-blocos, com atenção cruzada ao texto e modulação adaptativa pelo tempo, prevê a
-cada passo para onde a imagem deve andar. A conta é a mesma do PyTorch,
-reescrita em JavaScript puro, sem biblioteca nenhuma.
+Inference happens in the browser. You type a prompt in English or Portuguese, the page downloads the model once, and your own graphics card turns random noise into four 128 by 128 images through WebGPU. There is no inference server.
 
-Cada uma das quatro imagens roda num Web Worker separado, um por núcleo. O que
-aparece na tela durante a geração é a estimativa da rede para a imagem final
-naquele passo, então a imagem vai se formando enquanto o modelo decide.
+**The model is still training and this repository will keep receiving updates.** The page always serves the latest checkpoint, so it improves on its own every 30 minutes of training.
 
-O motor JavaScript foi conferido contra o PyTorch num caso de referência, com a
-mesma entrada e o mesmo prompt.
+## Current status
 
-| conferência | resultado |
+| | |
 |---|---|
-| tokenização | idêntica à do Python |
-| erro máximo na saída da rede | 1,6e-03 para valores de até 6,0 |
-| tempo por passo, um núcleo | cerca de 211 ms em Node |
+| Training step | 24,690 |
+| Images seen | 6.32 million of a 15 million target, about 42% |
+| Distinct photos in the training pool | about 770,000, growing as preprocessing continues |
+| Training loss (rectified flow) | 0.877, down from 0.90 at 2 million images |
+| Throughput | about 105 images per second on one Tesla T4 |
+| Remaining compute | about 22 GPU hours |
 
-Esse erro é o arredondamento do float16, e prova equivalência numérica entre as
-duas implementações, nada além disso.
+Live numbers, real training photos and the activity of each transformer block are on the [training dashboard](https://samuelpedroso-dev.github.io/minit2i/painel.html).
 
-Além de gerar do zero, a página faz variações. Ela pega uma imagem pronta,
-mistura com 60 por cento de ruído e deixa a rede refazer a partir dali, o que
-mantém a composição e muda os detalhes.
+## What changed with more training
 
----
+![Evolution of "a dog on the beach"](resultados/evolucao_cachorro.png)
 
-## A arquitetura
+**At 1.2 million images** the model already understood scenes and colors. Beaches had sand, sea and sky in the right places, but the dog was only a smudge.
 
-| peça | o que é |
+**At 3.6 million images** objects started to appear. The same prompt now produces an actual dog standing on the sand, with fur, body and legs, still blurry and melted at the edges.
+
+**At 5 million images**, in the grid at the top, the model handles natural scenes very well. The yellow flower field has a horizon, sky and trees, and the night city has the right mood of dark buildings and colored lights. It also binds attributes to objects, so "a red car on a city street" gives a red car with a city behind it.
+
+**What still fails.** Objects with a precise shape come out distorted or disappear, like the boat and the lighthouse. Specific food is weak, and the ramen looks nothing like ramen. Several images carry a strip of fake text at the bottom, learned from the watermarks and captions on stock photos in CC3M. Everything is soft, partly because of the 128 pixel resolution.
+
+Object shape is what improves most with more training. Sharpness and the fake text will not go away on their own, they need the data and resolution changes planned for the next version.
+
+## How it works
+
+| part | details |
 |---|---|
-| encoder de texto | embedding próprio, 2 camadas de transformer, 128 dimensões, treinado junto com o resto |
-| gerador | Diffusion Transformer, 6 blocos, 4 cabeças, patches de 4 por 4, atenção cruzada ao texto, adaLN Zero |
-| objetivo | rectified flow, a rede prevê a velocidade entre ruído e imagem, tempo sorteado em logit normal como no Stable Diffusion 3 |
-| guidance | 10 por cento dos exemplos de treino sem prompt, para o classifier free guidance |
-| amostragem | Euler, 30 passos por padrão |
-| pesos | média móvel exponencial dos pesos de treino, decaimento 0,999 |
+| Generator | Diffusion Transformer, 12 blocks, width 768, 12 heads, patch size 2, about 120M parameters, trained from scratch |
+| Conditioning | cross attention to text tokens plus a pooled text vector, shared adaLN modulation in the style of PixArt, RMS normalized queries and keys for float16 stability |
+| Text encoder | frozen multilingual CLIP (`clip-ViT-B-32-multilingual-v1`), so prompts work in English and Portuguese |
+| Latent space | frozen Stable Diffusion VAE (`sd-vae-ft-ema`), 128 px images become 16 x 16 x 4 latents |
+| Objective | rectified flow with logit normal timesteps, classifier free guidance with 10% empty prompts |
+| Sampling | Euler, 25 to 30 steps, guidance 4 to 4.5 |
+| Training | fp16 autocast on a free T4, batch 256 with gradient accumulation, EMA 0.9999, the whole latent dataset kept in GPU memory |
+| Browser | ONNX Runtime Web on WebGPU, transformer and VAE in fp16, text encoder quantized to int8, a WordPiece tokenizer rewritten in JavaScript |
 
-Nenhum peso pré treinado foi usado, nem no texto nem na imagem.
+Each checkpoint is exported to ONNX and uploaded to Hugging Face by the training loop itself. The page reads `meta.json`, uses the model already cached in the browser and fetches the new version in the background.
 
----
+## Version 0.1, the shapes model
 
-## O treino
+Before scaling, I proved the whole chain on a tiny 2.7 million parameter model that draws colored geometric shapes at 32 x 32, trained on CPU only and running in plain JavaScript with no libraries. Two shape and color combinations were held out of training to test whether the model composes concepts.
 
-8.616 passos de AdamW com lotes de 64, em 2 núcleos de CPU, sem GPU, em pouco
-mais de uma hora. O dataset tem 20 mil imagens sintéticas de formas com
-legenda em português, como "um triângulo amarelo grande no centro", geradas
-pelo `treino/formas.py`.
-
-Duas combinações foram retiradas do treino de propósito, **triângulo azul** e
-**losango amarelo**. A rede viu triângulos e viu azul, mas nunca os dois juntos.
-Elas servem para medir se o modelo combina conceitos ou só decora imagens.
-
----
-
-## A medição
-
-Todas as 280 combinações de forma, cor, tamanho e posição, duas sementes cada,
-30 passos e guidance 4. Um classificador geométrico lê cada imagem gerada. A cor
-sai da média dos pixels do objeto, o tamanho e a posição saem da caixa que
-envolve o objeto, e a forma sai da comparação da opacidade de cada pixel com a
-silhueta ideal das quatro formas, na mesma área e no mesmo centro de massa.
-
-Antes de medir o modelo, o classificador foi medido em 2.000 imagens reais do
-treino, onde a resposta certa é conhecida. Ele acertou 99,9% dos atributos
-completos. Sem essa conferência, a tabela abaixo mediria o classificador, não a
-rede.
-
-| atributo | combinações vistas, 520 imagens | nunca vistas, 40 imagens |
+| attribute | seen combinations, 520 images | never seen, 40 images |
 |---|---|---|
-| Cor | 100,0% | 100,0% |
-| Tamanho | 98,5% | 100,0% |
-| Posição | 100,0% | 100,0% |
-| Forma | 98,9% | 100,0% |
-| Tudo certo ao mesmo tempo | 97,3% | 100,0% |
+| Color | 100.0% | 100.0% |
+| Size | 98.5% | 100.0% |
+| Position | 100.0% | 100.0% |
+| Shape | 98.9% | 100.0% |
+| All correct at once | 97.3% | 100.0% |
 
-Nas combinações vistas, 506 de 520 imagens acertam os quatro atributos ao mesmo tempo. Os 14 erros se dividem entre tamanho e forma, quase todos em formas pequenas, onde um objeto ocupa poucos pixels e a diferença entre um círculo e um losango é de um ou dois pixels.
+The classifier used for this measurement was checked first on 2,000 real training images, where it got 99.9% of attributes right. The JavaScript engine matches PyTorch to within float16 rounding. That model is still available on the page under the shapes option.
 
-Nas combinações nunca vistas, as 40 imagens acertaram tudo. É o resultado mais interessante da tabela e também o de amostra menor, então ele mostra que a rede generaliza nesse caso, não que generaliza sempre. Num domínio tão simples, juntar cor e forma é muito mais fácil do que juntar conceitos em fotos reais, e é isso que as próximas versões vão medir.
+## Roadmap
 
----
-
-## O que isso não é
-
-Isto não é um gerador geral. Ele não sabe desenhar um gato, uma pessoa ou uma
-paisagem, e palavras fora do vocabulário são ignoradas, a página mostra quais
-foram riscadas. O que esta versão prova é que a cadeia inteira funciona, do
-encoder de texto ao transformer, do treino ao navegador, com a mesma arquitetura
-usada pelos geradores grandes, numa escala que cabe numa CPU.
-
----
-
-## Próximas atualizações
-
-| versão | o que entra |
+| version | scope |
 |---|---|
-| **0.1** | formas geométricas em 32 por 32, tudo treinado do zero em CPU. Publicada |
-| 0.2 | gerador geral, qualquer prompt em português ou inglês. Um transformer de 120 milhões de parâmetros treinado do zero no espaço latente do VAE do Stable Diffusion, com um encoder de texto CLIP multilíngue congelado, em 2,9 milhões de fotos do CC3M a 128 por 128, no Colab gratuito. Em treino, código em `geral/` e `colab/geral.ipynb` |
-| 0.3 | 256 por 256, legendas melhores e mais dados, treino em várias GPUs gratuitas ao mesmo tempo com DiLoCo |
-| 1.0 | um gerador geral, no nível dos primeiros geradores públicos, rodando no seu computador |
+| 0.1 | geometric shapes at 32 x 32, trained on CPU. Released |
+| **0.2** | general model, any prompt, 128 x 128, 15 million images on free T4s. **Training now** |
+| 0.3 | cleaned data without watermarks, new detailed captions from a vision model, fine tuning at 256 x 256 |
+| 0.4 | a larger transformer of 300 to 400 million parameters on CC12M |
 
-Cada versão segue a mesma regra desta. O modelo roda inteiro no navegador, o
-JavaScript é conferido contra o PyTorch e cada número vem medido.
+## Run it yourself
 
----
+Open the [live page](https://samuelpedroso-dev.github.io/minit2i/) in a recent Chrome or Edge with WebGPU. The first visit downloads about 480 MB, later visits load from the browser cache.
 
-## Como reproduzir
+To train, open `colab/geral.ipynb` in Google Colab with a T4 GPU and run all cells. With an `HF_TOKEN` secret, checkpoints and the web model go to Hugging Face, and without it they stay in Google Drive. If the session ends, run it again and it resumes from the last checkpoint.
 
 ```
 pip install -r requirements.txt
-cd treino
-python3 treinar.py --minutos 9      # repita, ele retoma do checkpoint
-python3 gerar.py "um quadrado roxo grande no topo"
-python3 medir.py ckpt.pt
-cd ..
-python3 web/exportar.py treino/ckpt.pt
-node web/conferir.mjs
-python3 web/montar.py
-python3 -m http.server              # e abra localhost:8000
+python geral/gerar.py "a lighthouse at night"     # generate locally from the latest checkpoint
+python web/montar.py                              # rebuild index.html
+python -m http.server                             # then open localhost:8000
 ```
 
----
+## Repository map
 
-## Mapa do repositório
-
-| caminho | o que é |
+| path | contents |
 |---|---|
-| `index.html` | a página, montada por `web/montar.py` |
-| `pesos.b64.txt` | pesos em float16, base64 |
-| `modelo.json` | configuração, vocabulário, mapa dos tensores e caso de referência |
-| `modelo/minit2i.pt` | checkpoint do PyTorch, pesos da média móvel |
-| `web/` | motor de inferência, worker, interface e scripts de exportação e montagem |
-| `treino/` | modelo, dataset, treino, geração e medição em PyTorch |
-| `geral/` | o gerador geral da versão 0.2, modelo, preparo do dataset e treino |
-| `colab/geral.ipynb` | notebook que prepara os dados e treina o gerador geral no Colab |
-| `colab/treino.ipynb` | treino das formas em GPU |
-| `resultados/` | medição, conferência do motor e grade de exemplos |
+| `index.html` | the generator page, built by `web/montar.py` |
+| `painel.html` | live training dashboard |
+| `geral/` | general model, data preparation, training loop, ONNX export and the live dashboard feed |
+| `colab/` | notebooks for training and testing on Colab |
+| `web/` | browser engines for both models, interface and build scripts |
+| `treino/` | the 0.1 shapes model, dataset, training and measurement |
+| `resultados/` | result grids and measurements |
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+Built by [Samuel Pedroso](https://github.com/Samuelpedroso-dev).

@@ -31,7 +31,7 @@ const MiniGeral = (() => {
       }
     } catch (e) { cache = null; }
     const r = await fetch(url);
-    if (!r.ok) throw new Error(`${r.status} ao baixar ${url.split("/").pop()}`);
+    if (!r.ok) throw new Error(`${r.status} while downloading ${url.split("/").pop()}`);
     const total = +r.headers.get("content-length") || 0;
     const leitor = r.body.getReader(); const partes = []; let n = 0;
     for (;;) { const { done, value } = await leitor.read(); if (done) break; partes.push(value); n += value.length; aoProgresso(n, total); }
@@ -105,17 +105,17 @@ const MiniGeral = (() => {
   async function iniciar(repo, aoEstado) {
     if (pronto) return meta;
     base = /^(https?:|\/)/.test(repo) ? repo : `https://huggingface.co/${repo}/resolve/main/web/`;
-    aoEstado("carregando o ONNX Runtime");
+    aoEstado("loading ONNX Runtime");
     if (!window.ort) await carregarScript(ORT + "ort.webgpu.min.js");
     ort = window.ort; ort.env.wasm.wasmPaths = ORT;
     meta = await (await fetch(base + "meta.json?t=" + Date.now(), { cache: "no-store" })).json();
     const gpu = !!navigator.gpu && !!(await navigator.gpu.requestAdapter().catch(() => null));
-    if (!gpu && meta.dtype === "fp16") throw new Error("o modelo geral precisa de WebGPU. Use o Chrome ou o Edge atualizados num computador.");
+    if (!gpu && meta.dtype === "fp16") throw new Error("the general model needs WebGPU. Use an up to date Chrome or Edge on a computer.");
     const arquivos = [["texto.onnx", "texto"], ["dit.onnx", "dit"], ["vae.onnx", "vae"]];
     const tam = meta.tamanhos || {}; const totalMB = Object.values(tam).reduce((a, b) => a + b, 0) / 1e6;
     const feito = {};
     const prog = (nome) => (n, t) => { feito[nome] = n; const mb = Object.values(feito).reduce((a, b) => a + b, 0) / 1e6;
-      aoEstado(`baixando o modelo geral, ${Math.round(mb)} de ${Math.round(totalMB || mb)} MB, só na primeira vez`); };
+      aoEstado(`downloading the general model, ${Math.round(mb)} of ${Math.round(totalMB || mb)} MB, first visit only`); };
     const [vtxt, ...bufs] = await Promise.all([
       fetch(base + "vocab.txt?v=" + meta.tokenizador_versao).then((r) => r.text()),
       ...arquivos.map(([f]) => f === "dit.onnx"
@@ -123,7 +123,7 @@ const MiniGeral = (() => {
         : baixar(base + f, "fixo", prog(f))),
     ]);
     vocab = new Map(vtxt.split("\n").map((w, i) => [w, i]));
-    aoEstado("preparando a rede na placa de vídeo");
+    aoEstado("preparing the network on your GPU");
     const ep = gpu ? ["webgpu", "wasm"] : ["wasm"];
     sess.texto = await ort.InferenceSession.create(bufs[0], { executionProviders: ["wasm"] });
     sess.dit = await ort.InferenceSession.create(bufs[1], { executionProviders: ep });

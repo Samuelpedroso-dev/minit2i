@@ -27,7 +27,7 @@
 
   // vocabulario em grupos, cada palavra vira um botao que entra no prompt
   function montarVocab() {
-    const nomes = { formas: "formas", cores: "cores", tamanhos: "tamanhos", posicoes: "posições" };
+    const nomes = { formas: "shapes", cores: "colors", tamanhos: "sizes", posicoes: "positions" };
     $("vocab").innerHTML = "";
     for (const [k, lista] of Object.entries(cfg.grupos)) {
       const div = document.createElement("div");
@@ -43,7 +43,7 @@
   }
 
   function montarSugestoes() {
-    const exemplos = modo === "geral" ? SUG_GERAL : [["um triângulo azul grande no centro", "Nunca visto"], ["um losango roxo pequeno no topo", "Novo"],
+    const exemplos = modo === "geral" ? SUG_GERAL : [["um triângulo azul grande no centro", "Never seen"], ["um losango roxo pequeno no topo", "New"],
                       ["um círculo laranja grande à direita", "Popular"]];
     const box = $("sugestoes"); box.innerHTML = "";
     for (const [p, selo] of exemplos) {
@@ -53,7 +53,7 @@
       box.appendChild(b);
     }
     const mais = document.createElement("button"); mais.type = "button"; mais.className = "sug";
-    mais.innerHTML = `<span class="t">Mais palavras</span><span aria-hidden="true">›</span>`;
+    mais.innerHTML = `<span class="t">More words</span><span aria-hidden="true">›</span>`;
     mais.onclick = () => { $("vocab").hidden = !$("vocab").hidden; };
     if (modo !== "geral") box.appendChild(mais);
   }
@@ -99,7 +99,7 @@
 
   function concluir(t) {
     const s = ((performance.now() - t.inicio) / 1000).toFixed(1).replace(".", ",");
-    t.tempo.textContent = `pronto em ${s} s`;
+    t.tempo.textContent = `done in ${s} s`;
     t.barra.parentElement.hidden = true;
     t.botoes.forEach((b) => (b.disabled = false));
     const m = $("miniatura"); m.textContent = "";
@@ -112,19 +112,19 @@
     $("vazio-feed").hidden = true;
     const el = document.createElement("article");
     el.className = "trab";
-    const promptHTML = dados.palavras.map(({ p, ok }) => ok ? esc(p) : `<span class="ign" title="palavra que o modelo ainda não conhece">${esc(p)}</span>`).join(" ");
+    const promptHTML = dados.palavras.map(({ p, ok }) => ok ? esc(p) : `<span class="ign" title="word the model does not know yet">${esc(p)}</span>`).join(" ");
     const ign = 0;
     el.innerHTML = `
-      <div class="bolha">${promptHTML || "<span class='ign'>prompt vazio</span>"}</div>
+      <div class="bolha">${promptHTML || "<span class='ign'>empty prompt</span>"}</div>
       <div class="resposta">
       <div class="grade"></div>
       <div class="info">
-        <div class="meta num"><span>${dados.tipo}</span><span>semente ${dados.sementes[0]}</span><span>${dados.passos} passos</span><span>guidance ${String(dados.guidance).replace(".", ",")}</span><span class="tempo">na fila</span></div>
-        ${ign ? `<div class="nota">As palavras riscadas ainda não fazem parte do vocabulário e foram ignoradas.</div>` : ""}
+        <div class="meta num"><span>${dados.tipo}</span><span>seed ${dados.sementes[0]}</span><span>${dados.passos} steps</span><span>guidance ${dados.guidance}</span><span class="tempo">queued</span></div>
+        ${ign ? `<div class="nota">Crossed out words are not in the vocabulary yet and were ignored.</div>` : ""}
         <div class="barra"><i style="width:0"></i></div>
         <div class="botoes">
-          <button class="bt" data-a="refazer" disabled>Refazer</button>
-          <button class="bt" data-a="editar" disabled>Editar</button>
+          <button class="bt" data-a="refazer" disabled>Redo</button>
+          <button class="bt" data-a="editar" disabled>Edit</button>
         </div>
       </div>
       </div>`;
@@ -157,8 +157,8 @@
     const { tok, palavras } = tokenizar(prompt);
     const a = lerAjustes();
     const sementes = [0, 1, 2, 3].map((k) => a.semente + k * 7919);
-    const t = criarCartao({ prompt, palavras, sementes, passos: a.passos, guidance: a.guidance, tipo: base ? "variação" : "geração" });
-    t.tempo.textContent = "gerando";
+    const t = criarCartao({ prompt, palavras, sementes, passos: a.passos, guidance: a.guidance, tipo: base ? "variation" : "generation" });
+    t.tempo.textContent = "generating";
     t.cels.forEach((cel, i) => {
       if (base) cel.ctx.putImageData(new ImageData(new Uint8ClampedArray(base), cfg.img, cfg.img), 0, 0);
       fila.push({ msg: { tipo: "gerar", id: t.id, idx: i, tok, semente: sementes[i], passos: a.passos, guidance: a.guidance,
@@ -172,18 +172,18 @@
   async function garantirGeral() {
     if (MiniGeral.pronto) return;
     const m = await MiniGeral.iniciar(GERAL_REPO, (txt) => estado(txt));
-    estado(`passo ${m.passo.toLocaleString("pt-BR")} do treino`, false);
+    estado(`training step ${m.passo.toLocaleString("en-US")}`, false);
   }
   function novoTrabalhoGeral(prompt) {
     const a = lerAjustes();
     const palavras = prompt.split(/\s+/).filter(Boolean).map((p) => ({ p, ok: true }));
-    const t = criarCartao({ prompt, palavras, sementes: [a.semente], passos: a.passos, guidance: a.guidance, tipo: "geral, prévia", modelo: "geral", tam: 128 });
-    t.tempo.textContent = "na fila";
+    const t = criarCartao({ prompt, palavras, sementes: [a.semente], passos: a.passos, guidance: a.guidance, tipo: "general, preview", modelo: "geral", tam: 128 });
+    t.tempo.textContent = "queued";
     filaGeral = filaGeral.then(async () => {
       try {
-        t.tempo.textContent = "carregando o modelo";
+        t.tempo.textContent = "loading the model";
         await garantirGeral();
-        t.inicio = performance.now(); t.tempo.textContent = "gerando";
+        t.inicio = performance.now(); t.tempo.textContent = "generating";
         await MiniGeral.gerar(prompt, { n: 4, passos: a.passos, cfg: a.guidance, semente: a.semente }, async (p, total, imgs, S, fim) => {
           t.barra.style.width = (100 * p / total) + "%";
           t.cels.forEach((c) => (c.pct.textContent = fim ? "" : Math.round(100 * p / total) + "%"));
@@ -197,22 +197,22 @@
         });
       } catch (e) {
         console.error(e);
-        t.tempo.textContent = "não foi possível gerar"; t.barra.parentElement.hidden = true;
+        t.tempo.textContent = "could not generate"; t.barra.parentElement.hidden = true;
         t.botoes.forEach((b) => (b.disabled = false));
         estado(e.message || String(e), false);
       }
     });
   }
 
-  const SUG_GERAL = [["um cachorro correndo na grama", "Novo"], ["uma praia com coqueiros ao pôr do sol", "Popular"], ["a plate of pasta with tomato sauce", "Inglês"]];
-  const SURPRESA_GERAL = ["uma casa de madeira na floresta", "montanhas cobertas de neve", "um gato dormindo no sofá", "a red car on a city street",
-    "um prato de frutas tropicais", "a lighthouse at night", "um campo de flores amarelas", "a bowl of ramen", "uma cidade à noite com luzes", "um barco no lago"];
+  const SUG_GERAL = [["a dog running on the grass", "New"], ["a beach with palm trees at sunset", "Popular"], ["um campo de flores amarelas", "Portuguese"]];
+  const SURPRESA_GERAL = ["a wooden house in the forest", "mountains covered in snow", "a cat sleeping on the sofa", "a red car on a city street",
+    "a plate of tropical fruits", "a lighthouse at night", "a field of yellow flowers", "a bowl of ramen", "a city at night with lights", "a boat on the lake"];
   function mudarModo(novo) {
     if (novo === "geral" && !GERAL_REPO) return;
     modo = novo;
     $("aba-formas").classList.toggle("on", modo === "formas"); $("aba-geral").classList.toggle("on", modo === "geral");
     $("modelo").value = modo;
-    $("prompt").placeholder = modo === "geral" ? "Descreva uma imagem" : "um triângulo azul grande no centro";
+    $("prompt").placeholder = modo === "geral" ? "Describe an image" : "um triângulo azul grande no centro";
     montarSugestoes();
     if (modo === "geral") $("vocab").hidden = true;
   }
@@ -263,7 +263,7 @@
         im.onload = () => t.cels[i].ctx.drawImage(im, 0, 0);
         im.src = src; t.cels[i].pronta = true; t.cels[i].el.classList.remove("gerando");
       });
-      t.tempo.textContent = "do seu histórico"; t.barra.parentElement.hidden = true;
+      t.tempo.textContent = "from your history"; t.barra.parentElement.hidden = true;
       t.botoes.forEach((b) => (b.disabled = false));
     }
     return itens.length;
@@ -303,7 +303,7 @@
     try {
       const [rc, rp] = await Promise.all([fetch("modelo.json"), fetch("pesos.b64.txt")]);
       cfg = await rc.json();
-      estado("decodificando os pesos");
+      estado("decoding the weights");
       const b64 = await rp.text();
       const fonte = document.getElementById("fonte-trabalhador").textContent;
       const url = URL.createObjectURL(new Blob([fonte], { type: "text/javascript" }));
@@ -319,14 +319,14 @@
         w.postMessage({ tipo: "iniciar", cfg, pesos: pesos.slice() });
         trabalhadores.push(w);
       }
-      $("nucleos").textContent = `${NUC} ${NUC > 1 ? "núcleos" : "núcleo"} em uso`;
+      $("nucleos").textContent = `${NUC} ${NUC > 1 ? "cores" : "core"} in use`;
       $("prompt").disabled = false; $("gerar").disabled = false;
       estado("", false);
       if (GERAL_REPO) mudarModo("geral"); else mudarModo("formas");
       carregarHistorico();
       window.scrollTo({ top: document.body.scrollHeight });
     } catch (e) {
-      estado("não foi possível carregar o modelo. Abra a página por um servidor, não como arquivo local.", false);
+      estado("could not load the model. Serve the page over HTTP instead of opening it as a local file.", false);
       console.error(e);
     }
   }

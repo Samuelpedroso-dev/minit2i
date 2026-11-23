@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -89,32 +89,32 @@ select#modelo option{background:var(--sup)}
 <div class="marca"><a href="https://github.com/Samuelpedroso-dev/minit2i" target="_blank" rel="noopener">MiniT2I</a></div>
 
 <main class="col">
-  <div class="vazio-feed" id="vazio-feed"><h1>O que vamos criar?</h1></div>
+  <div class="vazio-feed" id="vazio-feed"><h1>What should we create?</h1></div>
   <div class="feed" id="feed"></div>
   <div id="galeria"></div>
 </main>
 
 <div class="comando"><div class="col">
   <form class="caixa-prompt" id="form">
-    <textarea id="prompt" rows="1" placeholder="Descreva uma imagem" disabled></textarea>
+    <textarea id="prompt" rows="1" placeholder="Describe an image" disabled></textarea>
     <div class="linha-bar">
       <span class="ancora">
-        <button type="button" class="icone" id="bt-ajustes" aria-expanded="false" title="Ajustes"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+        <button type="button" class="icone" id="bt-ajustes" aria-expanded="false" title="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
         <div class="painel" id="painel" hidden>
-          <label><span>Passos <b id="passos-v">30</b></span><input type="range" id="passos" min="8" max="50" value="30"></label>
+          <label><span>Steps <b id="passos-v">30</b></span><input type="range" id="passos" min="8" max="50" value="30"></label>
           <label><span>Guidance <b id="guidance-v">4</b></span><input type="range" id="guidance" min="1" max="8" step="0.5" value="4"></label>
-          <label><span>Semente</span><input type="text" id="semente" placeholder="aleatória" inputmode="numeric"></label>
+          <label><span>Seed</span><input type="text" id="semente" placeholder="random" inputmode="numeric"></label>
           <p class="nota" id="nucleos"></p>
         </div>
       </span>
-      <button type="button" class="icone" id="surpresa" title="Prompt aleatório"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></button>
+      <button type="button" class="icone" id="surpresa" title="Random prompt"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></button>
       <div class="direita">
-        <select id="modelo" title="Modelo"><option value="geral" disabled>MiniT2I Geral</option><option value="formas">MiniT2I Formas</option></select>
-        <button type="submit" id="gerar" disabled title="Gerar"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+        <select id="modelo" title="Model"><option value="geral" disabled>MiniT2I General</option><option value="formas">MiniT2I Shapes</option></select>
+        <button type="submit" id="gerar" disabled title="Generate"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
       </div>
     </div>
   </form>
-  <div class="estado" id="estado"><span class="ponto"></span><span id="estado-txt">carregando</span></div>
+  <div class="estado" id="estado"><span class="ponto"></span><span id="estado-txt">loading</span></div>
 </div></div>
 
 <div hidden>
@@ -126,9 +126,9 @@ select#modelo option{background:var(--sup)}
   <canvas id="grande" width="32" height="32"></canvas>
   <p id="caixa-txt"></p>
   <div class="botoes">
-    <button class="bt cheio" id="baixar">Baixar</button>
-    <button class="bt" id="variar">Variações</button>
-    <button class="bt" id="fechar">Fechar</button>
+    <button class="bt cheio" id="baixar">Download</button>
+    <button class="bt" id="variar">Variations</button>
+    <button class="bt" id="fechar">Close</button>
   </div>
 </div></div>
 

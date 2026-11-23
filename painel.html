@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MiniT2I ao vivo</title>
+<title>MiniT2I live training</title>
 <style>
   :root { --fundo:#262624; --sup:#30302e; --sup2:#3a3a37; --borda:#45453f; --txt:#ece9e1; --fraco:#a19d93; --acento:#d97757; --verde:#7fb77e; }
   * { box-sizing:border-box; margin:0; padding:0 }
@@ -65,51 +65,51 @@
 </head>
 <body>
 <div class="topo">
-  <div class="marca">MiniT2I <a href="./">abrir o gerador</a></div>
-  <div class="status"><span class="ponto" id="ponto"></span><span id="status">conectando</span></div>
+  <div class="marca">MiniT2I <a href="./">open the generator</a></div>
+  <div class="status"><span class="ponto" id="ponto"></span><span id="status">connecting</span></div>
 </div>
 <main>
   <section class="card">
-    <div class="rot">Progresso do treino</div>
+    <div class="rot">Training progress</div>
     <div class="prog-num"><div class="pct" id="pct">0<small>%</small></div><div id="sub" style="color:var(--fraco)"></div></div>
     <div class="barra"><i id="barra"></i></div>
     <div class="kpis">
-      <div class="kpi"><b id="k-vistas">0</b><span>imagens processadas</span></div>
-      <div class="kpi"><b id="k-passo">0</b><span>passos de otimização</span></div>
-      <div class="kpi"><b id="k-vel">0</b><span>imagens por segundo</span></div>
-      <div class="kpi"><b id="k-perda">0</b><span>perda atual</span></div>
-      <div class="kpi"><b id="k-falta">0</b><span>horas de GPU restantes</span></div>
-      <div class="kpi"><b id="k-dados">0</b><span>fotos diferentes no treino</span></div>
+      <div class="kpi"><b id="k-vistas">0</b><span>images processed</span></div>
+      <div class="kpi"><b id="k-passo">0</b><span>optimization steps</span></div>
+      <div class="kpi"><b id="k-vel">0</b><span>images per second</span></div>
+      <div class="kpi"><b id="k-perda">0</b><span>current loss</span></div>
+      <div class="kpi"><b id="k-falta">0</b><span>GPU hours remaining</span></div>
+      <div class="kpi"><b id="k-dados">0</b><span>distinct training photos</span></div>
     </div>
     <div class="aviso" id="aviso"></div>
   </section>
 
   <section class="card">
-    <div class="rot">Cérebro da rede, ativação real de cada bloco nesta foto</div>
+    <div class="rot">Network brain, real activation of each block on this photo</div>
     <svg id="rede" viewBox="0 0 1100 330"></svg>
-    <p class="explica">Cada coluna é um dos 12 blocos do transformer e cada bolinha é uma faixa da imagem. Quanto mais escura, mais aquele bloco está trabalhando ali. As linhas verdes mostram onde a atividade cresce de um bloco para o outro e as vermelhas onde ela diminui. Os valores vêm do treino de verdade, capturados junto com as fotos.</p>
+    <p class="explica">Each column is one of the 12 transformer blocks and each dot is a horizontal band of the image. Darker means that block is working harder there. Green lines show where activity grows from one block to the next and red lines where it drops. The values come from the actual training run, captured together with the photos.</p>
   </section>
 
   <div class="duas">
     <section class="card">
-      <div class="rot">Motor neural, dados reais do treino</div>
+      <div class="rot">Neural engine, real training data</div>
       <div class="motor-legenda" id="legenda"></div>
       <div class="etapas">
-        <div class="etapa"><div class="quadro" id="q-real"><img id="i-real" alt=""></div><p>foto real do dataset</p></div>
+        <div class="etapa"><div class="quadro" id="q-real"><img id="i-real" alt=""></div><p>real photo from the dataset</p></div>
         <div class="seta" id="s1"><i></i></div>
-        <div class="etapa"><div class="quadro" id="q-ruido"><img id="i-ruido" alt=""></div><p id="p-ruido">foto com ruído</p></div>
+        <div class="etapa"><div class="quadro" id="q-ruido"><img id="i-ruido" alt=""></div><p id="p-ruido">photo with noise</p></div>
         <div class="seta" id="s2"><i></i></div>
-        <div class="etapa"><div class="quadro" id="q-prev"><img id="i-prev" alt=""></div><p>o que a rede reconstrói</p></div>
+        <div class="etapa"><div class="quadro" id="q-prev"><img id="i-prev" alt=""></div><p>what the network reconstructs</p></div>
       </div>
       <div class="blocos" id="blocos"></div>
-      <div class="motor-rodape"><span>erro nesta foto <b id="m-perda">0</b></span><span>foto <b id="m-idx">0</b> de <b id="m-tot">0</b></span><span>capturado <b id="m-quando">agora</b></span></div>
+      <div class="motor-rodape"><span>error on this photo <b id="m-perda">0</b></span><span>photo <b id="m-idx">0</b> of <b id="m-tot">0</b></span><span>captured <b id="m-quando">now</b></span></div>
       <div class="fila" id="fila"></div>
-      <p class="explica">A cada dois minutos o treino separa fotos reais do lote, mistura ruído e pede para a rede adivinhar a foto original. Os quadrados mostram a intensidade de cada um dos 12 blocos do transformer em cada pedaço da imagem enquanto ele pensa.</p>
+      <p class="explica">Every two minutes the training loop takes real photos from the batch, mixes in noise and asks the network to recover the original. The squares show how strongly each of the 12 transformer blocks responds to each patch of the image while it works.</p>
     </section>
     <section class="card">
-      <div class="rot">Perda ao longo do treino</div>
+      <div class="rot">Loss over training</div>
       <canvas id="grafico"></canvas>
-      <p class="explica">A perda mede o erro da rede ao tirar o ruído das fotos. Quanto menor, melhor. Ela cai devagar porque cada foto recebe uma quantidade aleatória de ruído.</p>
+      <p class="explica">The loss measures the error when removing noise from photos. Lower is better. It falls slowly because every photo gets a random amount of noise.</p>
     </section>
   </div>
 </main>
@@ -119,8 +119,8 @@ const BASE = `https://huggingface.co/${REPO}/resolve/main/`;
 const META = 15e6, VEL_PADRAO = 400000;
 let estado = null, atual = 0, ciclo = null, versao = "";
 const $ = (id) => document.getElementById(id);
-const fmt = (n) => n.toLocaleString("pt-BR");
-const mi = (n) => (n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + " mi";
+const fmt = (n) => n.toLocaleString("en-US");
+const mi = (n) => (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + "M";
 
 const blocos = $("blocos");
 for (let i = 0; i < 12; i++) blocos.insertAdjacentHTML("beforeend", `<div class="bloco"><canvas width="8" height="8"></canvas><span>${i + 1}</span></div>`);
@@ -128,25 +128,25 @@ const telas = [...blocos.querySelectorAll("canvas")];
 
 function haTempo(s) {
   const d = Math.max(0, Date.now() / 1000 - s);
-  if (d < 90) return "agora";
-  if (d < 3600) return `há ${Math.round(d / 60)} min`;
-  if (d < 86400) return `há ${Math.round(d / 3600)} h`;
-  return `há ${Math.round(d / 86400)} dias`;
+  if (d < 90) return "just now";
+  if (d < 3600) return `${Math.round(d / 60)} min ago`;
+  if (d < 86400) return `${Math.round(d / 3600)} h ago`;
+  return `${Math.round(d / 86400)} days ago`;
 }
 
 function progresso(vistas, passo, perda, velHora, dados, atualizado, limiteMin = 6) {
   const pct = Math.min(100, vistas / META * 100);
-  $("pct").innerHTML = pct.toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + "<small>%</small>";
+  $("pct").innerHTML = pct.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + "<small>%</small>";
   $("barra").style.width = pct + "%";
-  $("sub").textContent = `${mi(vistas)} de 15 mi imagens`;
+  $("sub").textContent = `${mi(vistas)} of 15M images`;
   $("k-vistas").textContent = mi(vistas);
   $("k-passo").textContent = fmt(passo);
-  $("k-perda").textContent = perda ? perda.toFixed(4) : "sem dado";
+  $("k-perda").textContent = perda ? perda.toFixed(4) : "no data";
   $("k-falta").textContent = Math.max(0, (META - vistas) / (velHora || VEL_PADRAO)).toFixed(0);
-  $("k-dados").textContent = dados ? fmt(dados) : "sem dado";
+  $("k-dados").textContent = dados ? fmt(dados) : "no data";
   const vivo = Date.now() / 1000 - atualizado < limiteMin * 60;
   $("ponto").className = "ponto" + (vivo ? " vivo" : "");
-  $("status").textContent = vivo ? "treinando agora" : `parado, última atualização ${haTempo(atualizado)}`;
+  $("status").textContent = vivo ? "training now" : `paused, last update ${haTempo(atualizado)}`;
 }
 
 function grafico(h) {
@@ -155,7 +155,7 @@ function grafico(h) {
   const g = c.getContext("2d"); g.scale(dpr, dpr);
   const W = r.width, H = r.height, m = { l: 44, r: 10, t: 10, b: 24 };
   g.clearRect(0, 0, W, H);
-  if (!h || h.length < 2) { g.fillStyle = "#a19d93"; g.font = "13px system-ui"; g.fillText("o gráfico aparece quando o treino enviar dados", 10, H / 2); return; }
+  if (!h || h.length < 2) { g.fillStyle = "#a19d93"; g.font = "13px system-ui"; g.fillText("the chart appears once training sends data", 10, H / 2); return; }
   const xs = h.map((p) => p[0]), ys = h.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs);
   const sorted = [...ys].sort((a, b) => a - b);
@@ -194,7 +194,7 @@ const rede = $("rede"), nos = [], arestas = [];
       gA.append(l); arestas[c].push({ l, r, s }); } }
   for (let r = 0; r < LINHAS; r++) {
     gA.append(el("line", { x1: 60, y1: Y(r), x2: x0, y2: Y(r), stroke: "#45453f" }));
-    const t = el("text", { x: 8, y: Y(r) + 4 }); t.textContent = `faixa ${r + 1}`; gN.append(t);
+    const t = el("text", { x: 8, y: Y(r) + 4 }); t.textContent = `band ${r + 1}`; gN.append(t);
   }
   const saida = el("circle", { cx: 1040, cy: (y0 + y1) / 2, r: 16, fill: "#3a3a37", class: "no" });
   for (let r = 0; r < LINHAS; r++) gA.append(el("line", { x1: x1, y1: Y(r), x2: 1040, y2: (y0 + y1) / 2, stroke: "#45453f", class: "ar", "stroke-opacity": 0.5 }));
@@ -202,7 +202,7 @@ const rede = $("rede"), nos = [], arestas = [];
     const t = el("text", { x: X(c) - 9, y: 22 }); t.textContent = `B${c + 1}`; gN.append(t);
     for (let r = 0; r < LINHAS; r++) { const n = el("circle", { cx: X(c), cy: Y(r), r: 8, fill: "#3a3a37", stroke: "#45453f", class: "no" }); gN.append(n); nos[c].push(n); } }
   gN.append(saida); nos.saida = saida;
-  const ts = el("text", { x: 1000, y: 318, class: "grande" }); ts.textContent = "reconstrução"; gN.append(ts);
+  const ts = el("text", { x: 1000, y: 318, class: "grande" }); ts.textContent = "reconstruction"; gN.append(ts);
 })();
 function linhasBloco(v, lado) { const out = []; for (let r = 0; r < LINHAS; r++) { let s = 0, n = 0; const r0 = Math.floor(r * lado / LINHAS), r1 = Math.floor((r + 1) * lado / LINHAS); for (let y = r0; y < r1; y++) for (let x = 0; x < lado; x++) { s += v[y * lado + x]; n++; } out.push(n ? s / n : 0); } const mn = Math.min(...out), mx = Math.max(...out); return out.map((a) => (a - mn) / (mx - mn || 1)); }
 const cor = (a) => `rgb(${Math.round(232 - 180 * a)},${Math.round(236 - 112 * a)},${Math.round(230 - 150 * a)})`;
@@ -231,9 +231,9 @@ async function mostrar(i, ver) {
   limparRede();
   $("m-idx").textContent = i + 1; $("m-tot").textContent = estado.amostras.length;
   $("m-perda").textContent = a.perda.toFixed(3);
-  $("p-ruido").textContent = `foto com ${Math.round(a.t * 100)}% de ruído`;
+  $("p-ruido").textContent = `photo with ${Math.round(a.t * 100)}% noise`;
   $("i-real").src = src(a.real); $("i-ruido").src = src(a.ruido); $("i-prev").src = src(a.previsto);
-  await digitar(a.legenda || "sem legenda");
+  await digitar(a.legenda || "no caption");
   if (ver !== versao) return;
   $("q-real").classList.add("ativo"); $("i-real").classList.add("on"); await espera(900);
   $("s1").classList.remove("corre"); void $("s1").offsetWidth; $("s1").classList.add("corre"); await espera(700);
@@ -267,9 +267,9 @@ async function atualizar() {
     $("aviso").style.display = "none";
   } else if (meta) {
     progresso(meta.vistas, meta.passo, vivo && vivo.perda, 0, vivo && vivo.imagens_no_dataset, metaT, 36);
-    $("k-vel").textContent = "sem dado";
+    $("k-vel").textContent = "no data";
     $("aviso").style.display = "block";
-    $("aviso").textContent = vivo ? "O último salvamento é mais novo que a captura ao vivo." : "As capturas ao vivo começam na próxima sessão de treino. Por enquanto o painel mostra o último salvamento.";
+    $("aviso").textContent = vivo ? "The last checkpoint is newer than the live capture. Training is probably paused between free GPU sessions." : "Live captures start with the next training session. For now the dashboard shows the last checkpoint.";
   }
   if (vivo) {
     grafico(vivo.historico);
